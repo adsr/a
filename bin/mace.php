@@ -54,7 +54,7 @@ else {
 
 // Require config
 if ($rc_path !== null && !is_readable($rc_path)) {
-    echo "Rc file not readable: $rc_path";
+    echo "Rc file not readable: $rc_path\n";
     exit(1);
 }
 
@@ -85,6 +85,10 @@ set_exception_handler(function($e) {
 
 if (!$is_bootstrap) {
     // Instantiate
+    if (!function_exists('ncurses_init')) {
+        echo "Missing ncurses extension\n";
+        exit(1);
+    }
     $mace = new Mace();
     if ($rc_path) {
         $mace->setRcPath($rc_path);
