@@ -3,22 +3,22 @@ mace
 
 mace is a console-based text editor written in PHP.
 
-Requirements:
+**Requirements**
 * PHP 5.3
 * PHP ncurses extension (http://www.php.net/manual/en/ncurses.installation.php)
 
-Install and run:
-<pre>
+**Install and run**
 
-# Install PHP ncurses extension
+1. Install PHP ncurses extension:
+  <pre>
+  $ sudo pecl install ncurses
+  </pre>
 
-$ sudo pecl install ncurses
+  Follow the instructions from pecl. Make sure to add "extension=ncurses.so" to php.ini.
 
-# Follow directions
-# Take note: You should add "extension=ncurses.so" to php.ini
-
-$ git clone git://github.com/adsr/mace.git
-$ cd mace
-$ ./mace
-
-</pre>
+2. Clone repo and run:
+  <pre>
+  $ git clone git://github.com/adsr/mace.git
+  $ cd mace
+  $ ./mace
+  </pre>
