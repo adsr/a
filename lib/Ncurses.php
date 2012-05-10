@@ -61,8 +61,20 @@ class Ncurses {
             ncurses_init_pair($pair_num, $fg_num, $bg_num);
             self::$color_pairs[$pair_key] = $pair_num;
         }
-        Logger::debug("getColorPair: $fg/$bg is " . self::$color_pairs[$pair_key], __CLASS__);
         return self::$color_pairs[$pair_key];
+    }
+
+    public static function getAttrKey($fg, $bg, $attrs) {
+        return "{$fg}|{$bg}|{$attrs}";
+    }
+
+    public static function parseAttrKey($attr_key) {
+        $attr_key_parsed = explode('|', $attr_key, 3);
+        if (count($attr_key_parsed) !== 3) {
+            $attr_key_parsed = array(self::COLOR_DEFAULT, self::COLOR_DEFAULT, 0);
+        }
+        $attr_key_parsed[2] = (int)$attr_key_parsed[2];
+        return $attr_key_parsed;
     }
 
     private static function ensureInitialized() {
@@ -100,8 +112,8 @@ class Ncurses {
     public $line;
     public $offset;
 
-    private $color_fg = 'default';
-    private $color_bg = 'default';
+    /** @var string $attr_key should match self::getAttrKey */
+    private $attr_key = 'default|default|0';
 
     protected function __construct(Ncurses $parent_window, $rows, $cols, $line, $offset) {
         $this->parent = $parent_window;
@@ -154,14 +166,19 @@ class Ncurses {
         return array($rows, $cols);
     }
 
-    public function setColor($fg, $bg) {
-        if ($this->color_fg == $fg && $this->color_bg == $bg) {
+    public function setColorByAttrKey($attr_key) {
+        list($fg, $bg, $attrs) = self::parseAttrKey($attr_key);
+        $this->setColor($fg, $bg, $attrs);
+    }
+
+    public function setColor($fg, $bg, $attrs = NCURSES_A_NORMAL) {
+        $attr_key = self::getAttrKey($fg, $bg, $attrs);
+        if ($attr_key == $this->attr_key) {
             return;
         }
-        $pair = self::getColorPair($fg, $bg);
-        $this->wcolor_set($pair);
-        $this->color_fg = $fg;
-        $this->color_bg = $bg;
+        $this->wattrset($attrs);
+        $this->wcolor_set(self::getColorPair($fg, $bg));
+        $this->attr_key = $attr_key;
     }
 
     public function delwin() {

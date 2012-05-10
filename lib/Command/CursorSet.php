@@ -14,7 +14,8 @@ class Command_CursorSet extends Command {
     public function execute() {
         $this->buffer_view->setCursor(
             $this->params[0] === '-' ? null : (int)$this->params[0],
-            $this->params[1] === '-' ? null : (int)$this->params[1]
+            $this->params[1] === '-' ? null : (int)$this->params[1],
+            !empty($this->params[2])
         );
     }
 

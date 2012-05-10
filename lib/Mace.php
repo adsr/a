@@ -8,7 +8,7 @@ class Mace {
     /** @var Control_TitleBar */
     private $title_bar;
 
-    /** @var Control_MultieBufferView */
+    /** @var Control_MultiBufferView */
     private $multi_buffer_view;
 
     /** @var Control_StatusBar */
@@ -23,6 +23,9 @@ class Mace {
     /** @var ContextStack */
     private $context_stack;
 
+    /** @var CommandParser */
+    private $command_parser;
+
     /** @var string path of rc file */
     private $rc_path;
 
@@ -31,10 +34,6 @@ class Mace {
         error_reporting(E_ALL | E_STRICT);
         ini_set('log_errors', 1);
         ini_set('display_errors', 0);
-        $this->title_bar = $this->addControl(new Control_TitleBar());
-        $this->multi_buffer_view = $this->addControl(new Control_MultiBufferView());
-        $this->status_bar = $this->addControl(new Control_StatusBar());
-        $this->prompt_bar = $this->addControl(new Control_PromptBar());
     }
 
     /** Set rc path */
@@ -44,26 +43,18 @@ class Mace {
 
     /** Main entry point */
     public function run() {
+        $this->context_stack = new ContextStack();
+        $this->command_parser = new CommandParser($this->context_stack);
+        $this->processRcCommands();
+        $this->initControls();
+        $this->mainLoop();
+    }
+
+    /** Main loop */
+    private function mainLoop() {
 
         $stdscr = Ncurses_Stdscr::getInstance();
-        $stdscr->refresh();
-
         $input_parser = new InputParser(array($this, 'getInput'));
-
-        $this->context_stack = new ContextStack();
-        $this->context_stack->setActiveControl($this->multi_buffer_view);
-        foreach ($this->controls as $control) {
-            $control->setRegistry($this->context_stack->getRegistry());
-        }
-
-        $command_parser = new CommandParser($this->context_stack);
-
-        $this->resize();
-
-        $rc_commands = array();
-        if ($this->rc_path) {
-            $rc_commands = array_filter(explode("\n", file_get_contents($this->rc_path)));
-        }
 
         // Program loop
         do {
@@ -87,31 +78,25 @@ class Mace {
             $keychord = null;
             try {
 
-                if (!empty($rc_commands)) {
-                    // Start up commands
-                    $command_str = array_shift($rc_commands);
-                    $command = $command_parser->getCommandFromStr($command_str);
+                // Get command from input
+                $keychord = $input_parser->getKeyChord(); // TODO unrecognized input
+                if ($keychord === null) {
+                    Config::set('status.text', 'Unrecognized input');
+                    continue;
+                }
+                else if ($keychord == 'resize') {
+                    // Special handling for resize keychord
+                    $this->resize();
+                    $stdscr->end();
+                    $stdscr->refresh();
                 }
                 else {
-                    // Get command from input
-                    $keychord = $input_parser->getKeyChord(); // TODO unrecognized input
-                    if ($keychord === null) {
-                        Config::set('status.text', 'Unrecognized input');
-                        continue;
-                    }
-                    else if ($keychord == 'resize') {
-                        // Special handling for resize keychord
-                        $this->resize();
-                        $stdscr->end();
-                        $stdscr->refresh();
-                    }
-                    else {
-                        Config::set('status.text', "last input was: $keychord");
-                    }
-
-                    // Get command from keychord
-                    $command = $command_parser->getCommandFromKeychord($keychord);
+                    Config::set('status.text', "last input was: $keychord");
                 }
+
+                // Get command from keychord
+                $command = $this->command_parser->getCommandFromKeychord($keychord);
+
             }
             catch (CommandParser_Exception $e) {
                 $this->setStatus($e->getMessage());
@@ -121,27 +106,36 @@ class Mace {
 
             // Execute the command
             $this->context_stack->setCurrentCommand($command);
+            $command_result = null;
             try {
-                $command_result = $command->execute();
+                $command_result = $this->executeCommand($command);
             }
             catch (Exception $e) {
                 Logger::error((string)$e, __CLASS__);
                 $this->setStatus($e->getMessage());
             }
-            $this->context_stack->getRegistry()->setVar(
-                Command::LAST_RESULT_VAR_NAME,
-                $command_result,
-                Registry::SCOPE_GLOBAL
-            );
+
         } while ($command_result !== Command::$RESULT_HALT && $keychord !== 'q'); // TODO do not quit on 'q'
 
         $stdscr->clear();
         $stdscr->refresh();
+
     }
 
     /** @param string $str set status text */
     private function setStatus($str) {
         $this->status_bar->setStatus(stripslashes($str));
+    }
+
+    /** @param Command $command */
+    private function executeCommand(Command $command) {
+        $command_result = $command->execute();
+        $this->context_stack->getRegistry()->setVar(
+            Command::LAST_RESULT_VAR_NAME,
+            $command_result,
+            Registry::SCOPE_GLOBAL
+        );
+        return $command_result;
     }
 
     /** @return int */
@@ -166,6 +160,47 @@ class Mace {
         $this->status_bar->resize(1, $width, $height - 2, 0);
         $this->prompt_bar->resize(1, $width, $height - 1, 0);
         $this->multi_buffer_view->resize($height - 3, $width, 1, 0);
+
+    }
+
+    /** Execute rc commands */
+    private function processRcCommands() {
+        $rc_commands = array();
+        if ($this->rc_path) {
+            $rc_commands = array_filter(explode("\n", file_get_contents($this->rc_path)));
+        }
+        foreach ($rc_commands as $rc_command) {
+            $command = $this->command_parser->getCommandFromStr($rc_command);
+            try {
+                $command->execute();
+            } catch (Exception $e) {
+                Logger::error(
+                    "Startup command error",
+                    __CLASS__,
+                    $rc_command,
+                    $e
+                );
+            }
+        }
+    }
+
+    /** Set up all Controls */
+    private function initControls() {
+
+        $stdscr = Ncurses_Stdscr::getInstance();
+        $stdscr->refresh();
+
+        $this->title_bar = $this->addControl(new Control_TitleBar());
+        $this->multi_buffer_view = $this->addControl(new Control_MultiBufferView());
+        $this->status_bar = $this->addControl(new Control_StatusBar());
+        $this->prompt_bar = $this->addControl(new Control_PromptBar());
+        foreach ($this->controls as $control) {
+            $control->setRegistry($this->context_stack->getRegistry());
+        }
+
+        $this->context_stack->setActiveControl($this->multi_buffer_view);
+
+        $this->resize();
 
     }
 

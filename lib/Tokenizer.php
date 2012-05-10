@@ -80,7 +80,7 @@ class Tokenizer {
             $this->tokens[$append_to_key] .= $this->cur_token;
         }
         else {
-            if ($this->next_token_is_variable) {
+            if ($this->next_token_is_variable && strlen($this->cur_token) > 1) {
                 $this->cur_token = $this->registry->evaluate($this->cur_token);
                 $this->next_token_is_variable = false;
             }

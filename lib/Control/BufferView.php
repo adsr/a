@@ -55,19 +55,21 @@ class Control_BufferView extends Control implements IBufferListener {
 
     /** Ctor */
     public function __construct($buffer = null) {
-        if ($buffer instanceof IBuffer) {
-            $this->buffer = $buffer;
-        }
-        else if (is_string($buffer)) {
-            // TODO load from path
-        }
-        else {
-            $this->buffer = new Buffer();
-            $this->buffer->loadFromText(file_get_contents(__DIR__ . '/../Mace.php')); // TODO don't do this
-        }
-        $this->syntax_highlighter = new SyntaxHighlighter(); // TODO setSyntaxHighlighter
+        $this->syntax_highlighter = new SyntaxHighlighter();
+        $this->syntax_highlighter->setSyntax('php');
+        // TODO accept IBuffer, string $path as params
+        $this->buffer = new Buffer();
         $this->buffer->registerListener($this);
+        $text = isset($_SERVER['argv'][1]) && is_readable($_SERVER['argv'][1]) // TODO don't do this
+            ? file_get_contents($_SERVER['argv'][1])
+            : '';
+        $this->buffer->loadFromText($text);
         $this->line_num_cols = Config::get('buffer_view.line_number_width', 4);
+    }
+
+    /** @return SyntaxHighlighter */
+    public function getSyntaxHighlighter() {
+        return $this->syntax_highlighter;
     }
 
     /** Set focus */
@@ -224,9 +226,8 @@ class Control_BufferView extends Control implements IBufferListener {
                         0,
                         $offset_end - $offset_start + 1
                     );
-                    $this->window_buffer->setColor(
-                        $colored_substr['color_fg'],
-                        $colored_substr['color_bg']
+                    $this->window_buffer->setColorByAttrKey(
+                        $colored_substr['attr_key']
                     );
                     $this->window_buffer->wmove($screen_line, $screen_offset);
                     $this->window_buffer->waddstr($substr);
@@ -293,16 +294,16 @@ class Control_BufferView extends Control implements IBufferListener {
     public function moveCursorOffset($offset_delta) {
         $this->setCursor(
             $this->cursor_line,
-            $this->cursor_offset + $offset_delta
+            $this->cursor_offset + $offset_delta,
+            true
         );
-        $this->target_cursor_offset = $this->cursor_offset;
     }
 
     /**
      * @param int $set_line
      * @param int $set_offset
      */
-    public function setCursor($set_line, $set_offset) {
+    public function setCursor($set_line, $set_offset, $set_target_offset = false) {
         list($line, $offset) = $this->buffer->getLineAndOffset(
             $this->buffer->getBufferOffset(
                 $set_line,
@@ -317,6 +318,10 @@ class Control_BufferView extends Control implements IBufferListener {
         }
         else if ($this->cursor_line < $this->viewport_line) {
             $this->moveViewportLine(-1 * ($this->viewport_line - $this->cursor_line));
+        }
+
+        if ($set_target_offset) {
+            $this->target_cursor_offset = $this->cursor_offset;
         }
 
     }

@@ -2,7 +2,7 @@ key_bind root space "insert_string --str ' '"
 key_bind root ! "insert_string --str '!'"
 key_bind root double-quote "insert_string --str '"'"
 key_bind root # "insert_string --str '#'"
-key_bind root '$' "insert_string --str '$'"
+key_bind root \$ "insert_string --str '\\$'"
 key_bind root % "insert_string --str '%'"
 key_bind root & "insert_string --str '&'"
 key_bind root single-quote 'insert_string --str "\'"'
@@ -58,7 +58,7 @@ key_bind root X "insert_string --str 'X'"
 key_bind root Y "insert_string --str 'Y'"
 key_bind root Z "insert_string --str 'Z'"
 key_bind root [ "insert_string --str '['"
-key_bind root \\ "insert_string --str '\\'"
+key_bind root \\ "insert_string --str '\\\\'"
 key_bind root ] "insert_string --str ']'"
 key_bind root ^ "insert_string --str '^'"
 key_bind root _ "insert_string --str '_'"
@@ -101,5 +101,18 @@ key_bind root up "cursor_move_line -1"
 key_bind root down "cursor_move_line 1"
 key_bind root left "cursor_move_offset -1"
 key_bind root right "cursor_move_offset 1"
-key_bind root home "cursor_set $cur_line_num 0"
-key_bind root end "cursor_set $cur_line_num $cur_line_length"
+key_bind root home "cursor_set $cur_line_num 0 1"
+key_bind root end "cursor_set $cur_line_num $cur_line_length 1"
+
+syntax add php --path_pattern '/\.php[2345s~]?$/'
+syntax rule php --pattern '/\\$[a-zA-Z_0-9$]+|[=!<>-]/' --color_fg green
+syntax rule php --pattern '/\\b(class|var|const|static|final|private|public|protected|function|switch|case|default|endswitch|if|else|elseif|endif|for|foreach|endfor|endforeach|while|endwhile|new|die|exit|echo|continue|break|include|require|include_once|require_once|return|abstract|interface)\\b/' --color_fg yellow
+syntax rule php --pattern '/\\b-?[0-9]+\\b/' --color_fg blue --bold 1
+syntax rule php --pattern '/\\b(true|false|null)\\b/' --color_fg blue --bold 1
+syntax rule php --pattern '@[(){}.,;+=/%-]@' --color_fg red --bold 1
+syntax rule php --pattern '/(\\$|=>|->|::)/' --color_fg green --bold 1
+syntax rule php --pattern '@(#.*|//.*)$@' --color_fg cyan
+syntax rule php --pattern '/(\\[|\\])/' --color_fg white --bold 1
+syntax rule php --pattern "/(<\\?(php)?|\\?>)/" --color_fg green
+syntax rule php --pattern "@(?U:'.*')@" --color_fg yellow --bold 1
+syntax rule php --pattern '@(?U:".*")@' --color_fg yellow --bold 1

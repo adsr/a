@@ -33,6 +33,11 @@ class Logger {
         $args = func_get_args();
         $type = array_shift($args);
         $msg = array_shift($args);
+        if (is_array($msg)) {
+            $msg = json_encode($msg);
+        } else {
+            $msg = (string)$msg;
+        }
         $namespace = array_shift($args);
         if ($namespace === null) {
             $namespace = 'none';

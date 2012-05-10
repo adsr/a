@@ -70,6 +70,7 @@ abstract class Command {
         foreach ($tokens as $i => $token) {
             if ($next_token_is_rvalue) {
                 $params[$next_token_param_key] = $token;
+                $next_token_is_rvalue = false;
             }
             else if (preg_match('|^--?([A-Za-z]\w*)=(.*)$|', $token, $match)) {
                 $params[$match[1]] = $match[2];
@@ -83,7 +84,7 @@ abstract class Command {
             }
         }
         Logger::debug('parseParamString: params=' . json_encode($params), __CLASS__);
-        $this->params = $params;
+        $this->params = array_merge($this->params, $params);
     }
 
     /**
