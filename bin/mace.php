@@ -3,7 +3,9 @@
 
 // Define consts
 define('MACE_VERSION', '0.1');
-define('RC_LOCAL', rtrim($_ENV['HOME'], '/') . '/.macerc');
+if ($_ENV['HOME']) {
+    define('RC_LOCAL', rtrim($_ENV['HOME'], '/') . '/.macerc');
+}
 define('RC_DIST', __DIR__ . '/../etc/mace.rc');
 define('RC_GLOBAL', '/etc/mace.rc');
 define('LIB_DIR', __DIR__ . '/../lib/');
@@ -35,7 +37,7 @@ if (isset($opt['c'])) {
     // From command line arg
     $rc_path = $opt['c'];
 }
-else if (is_readable(RC_LOCAL)) {
+else if (defined('RC_LOCAL') && is_readable(RC_LOCAL)) {
     // From /home
     $rc_path = RC_LOCAL;
 }
