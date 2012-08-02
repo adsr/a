@@ -20,7 +20,8 @@ There is no make file or build script yet.
 2. Download the required libraries and place them into a directory named `ext/` alongside main.c. (ncurses is most likely on your system already.)
 3. Extract and compile each library such that you have the following directory structure:
 
-```adam@acrux:~/mace$ pwd
+```
+adam@acrux:~/mace$ pwd
 /home/adam/mace
 adam@acrux:~/mace$ find ext/ -maxdepth 2
 ext/
