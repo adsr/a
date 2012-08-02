@@ -24,6 +24,7 @@ typedef struct control_s {
     WINDOW* window_line_num;
     WINDOW* window_margin_left;
     WINDOW* window_margin_right;
+    int window_attrs;
     int (*resize)(struct control_s* self, int width, int height, int left, int top);
     int (*render)(struct control_s* self);
     struct control_s* buffer_view;
@@ -54,8 +55,11 @@ control_t* control_get_active();
 control_t* control_get_active_buffer_view();
 control_t* control_get_active_buffer_view_from_node(control_t* node);
 
+int control_set_status(char* status);
+
 int control_set_cursor(control_t* control, int line, int offset);
 int control_get_cursor(control_t* control, int* line, int* offset);
+int control_render_cursor();
 
 int control_resize_default(control_t* self, int width, int height, int left, int top);
 int control_resize_multi_buffer_view(control_t* self, int width, int height, int left, int top);

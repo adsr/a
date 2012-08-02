@@ -4,6 +4,20 @@
 #include "buffer.h"
 #include "control.h"
 
+extern FILE* fdebug;
+
+buffer_t* buffer_new() {
+    int zero = 0;
+    buffer_t* buffer = (buffer_t*)calloc(1, sizeof(buffer_t));
+    buffer->buffer = bfromcstr("");
+    buffer->char_count = 0;
+    buffer->line_count = 1;
+    utarray_new(buffer->line_offsets, &ut_int_icd);
+    utarray_push_back(buffer->line_offsets, &zero); // 0 -> 0
+    buffer->buffer_listener_head = NULL;
+    return buffer;
+}
+
 int buffer_insert_str(
     buffer_t* buffer,
     int line,
@@ -57,30 +71,19 @@ int buffer_insert_str(
         buffer_dirty_lines(
             buffer,
             (line < *new_line ? line : *new_line),
-            buffer->char_count - 1,
+            buffer->line_count - 1,
             FALSE
         );
     } else { // buffer->line_count < pre_line_count
         buffer_dirty_lines(
             buffer,
             (line < *new_line ? line : *new_line),
-            buffer->char_count - 1,
+            buffer->line_count - 1,
             TRUE
         );
     }
-    return 0;
-}
 
-buffer_t* buffer_new() {
-    int zero = 0;
-    buffer_t* buffer = (buffer_t*)calloc(1, sizeof(buffer_t));
-    buffer->buffer = bfromcstr("");
-    buffer->char_count = 0;
-    buffer->line_count = 1;
-    utarray_new(buffer->line_offsets, &ut_int_icd);
-    utarray_push_back(buffer->line_offsets, &zero); // 0 -> 0
-    buffer->buffer_listener_head = NULL;
-    return buffer;
+    return 0;
 }
 
 int buffer_add_listener(buffer_t* buffer, control_t* control) {
@@ -103,11 +106,11 @@ int buffer_add_listener(buffer_t* buffer, control_t* control) {
 int buffer_get_buffer_offset(buffer_t* buffer, int line, int offset) {
 
     int buffer_offset;
-    int* line_offset;
-    int last_offset = buffer->char_count - 1;
-    if (last_offset < 0) {
-        last_offset = 0;
-    }
+    int* line_offset = NULL;
+    int last_offset = buffer->char_count;// - 1;
+    //if (last_offset < 0) {
+    //    last_offset = 0;
+    //}
 
     if (line < 0) {
         // Return 0 for line < 0
@@ -121,6 +124,7 @@ int buffer_get_buffer_offset(buffer_t* buffer, int line, int offset) {
     }
 
     line_offset = (int*)utarray_eltptr(buffer->line_offsets, line);
+
     buffer_offset = *line_offset + offset; // offset of line + offset
     if (buffer_offset > last_offset) {
         // Return last_offset for buffer_offset > last_offset
@@ -151,13 +155,13 @@ int buffer_calc_line_offsets(buffer_t* buffer) {
         }
         newline_offset += 1; // Increment to get to first char of line
 
-        if (utarray_len(buffer->line_offsets) < line_count) {
+        if (utarray_len(buffer->line_offsets) < line_count + 1) {
             // Resize array if necessary
-            utarray_resize(buffer->line_offsets, line_count);
+            utarray_resize(buffer->line_offsets, line_count + 1);
         }
 
         // Let buffer->line_offsets[line_count - 1] = newline_offset
-        line_offset_elem = (int*)utarray_eltptr(buffer->line_offsets, line_count - 1);
+        line_offset_elem = (int*)utarray_eltptr(buffer->line_offsets, line_count);
         *line_offset_elem = newline_offset;
 
         // Advance look_offset
@@ -244,7 +248,7 @@ int buffer_get_line_and_offset(buffer_t* buffer, int buffer_offset, int* line, i
 
 char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_end, int* line_count) {
 
-    int i;
+    int line, i;
     char** lines;
 
     *line_count = 0;
@@ -255,9 +259,9 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
     }
 
     lines = (char**)malloc(line_count_max * sizeof(char*));
-    for (i = dirty_line_start; i <= dirty_line_end; i++) {
-        *(lines + i) = buffer_get_line(buffer, i);
-        if (*(lines + i) == NULL) {
+    for (line = dirty_line_start; line <= dirty_line_end; line++) {
+        *(lines + *line_count) = buffer_get_line(buffer, line);
+        if (*(lines + *line_count) == NULL) {
             break;
         }
         *line_count += 1;
@@ -269,8 +273,8 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
 
 char* buffer_get_line(buffer_t* buffer, int line) {
 
-    int start_offset;
-    int end_offset;
+    int start_offset; // Inclusive start offset in buffer->buffer to return
+    int end_offset; // Inlcusive end offset in buffer->buffer to return
     bstring line_str;
 
     if (line < 0 || line >= buffer->line_count) {
@@ -279,9 +283,11 @@ char* buffer_get_line(buffer_t* buffer, int line) {
 
     start_offset = buffer_get_buffer_offset(buffer, line, 0);
     if (line + 1 < buffer->line_count) {
-        end_offset = buffer_get_buffer_offset(buffer, line + 1, 0) - 1;
+        // Minus 1 is the previous newline
+        // Minus 2 is the last char of the previous line
+        end_offset = buffer_get_buffer_offset(buffer, line + 1, 0) - 2;
     } else {
-        end_offset = buffer->char_count;
+        end_offset = buffer->char_count - 1; // Last char offset of buffer
     }
 
     line_str = bmidstr(buffer->buffer, start_offset, end_offset - start_offset + 1);

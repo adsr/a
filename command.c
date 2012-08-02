@@ -27,6 +27,12 @@ int command_init() {
     // Register commands
     COMMAND_REGISTER(commands, command_tmp, bind);
     COMMAND_REGISTER(commands, command_tmp, write);
+    COMMAND_REGISTER(commands, command_tmp, write_newline);
+    COMMAND_REGISTER(commands, command_tmp, write_tab);
+    COMMAND_REGISTER(commands, command_tmp, delete_before);
+    COMMAND_REGISTER(commands, command_tmp, delete_after);
+    COMMAND_REGISTER(commands, command_tmp, cursor_move_offset);
+    COMMAND_REGISTER(commands, command_tmp, cursor_move_line);
 
     // Init commands
     HASH_ITER(hh, commands, command_cur, command_tmp) {
@@ -35,7 +41,6 @@ int command_init() {
         }
         lua_pushcfunction(lua_state, command_cur->execute);
         lua_setglobal(lua_state, command_cur->name);
-fprintf(fdebug, "lua_setglobal[%s]\n", command_cur->name);
     }
 
     return 0;
@@ -43,39 +48,46 @@ fprintf(fdebug, "lua_setglobal[%s]\n", command_cur->name);
 
 int command_execute_bind(lua_State* lua_state) {
 
-fprintf(fdebug, "in command_execute_bind\n");
-
-
     char* keychord_str;
-    char* code_str;
+    char* code_str = NULL;
     int code_str_len;
+    int func_ref = 0;
     keychord_command_map_t* entry;
 
     keychord_str = luaL_checkstring(lua_state, 1);
-    code_str = luaL_checkstring(lua_state, 2);
-    code_str_len = strlen(code_str) + 1; // Plus 1 for null terminator
+
+    if (lua_isstring(lua_state, 2)) {
+        code_str = luaL_checkstring(lua_state, 2);
+        code_str_len = strlen(code_str) + 1; // Plus 1 for null terminator
+    } else if (lua_isfunction(lua_state, 2)) {
+        luaL_checktype(lua_state, 2, LUA_TFUNCTION);
+        func_ref = luaL_ref(lua_state, LUA_REGISTRYINDEX);
+    }
 
     entry = (keychord_command_map_t*)calloc(1, sizeof(keychord_command_map_t));
     snprintf(entry->keychord, sizeof(entry->keychord), "%s", keychord_str);
-    entry->lua_code = (char*)malloc(code_str_len * sizeof(char));
-    snprintf(entry->lua_code, code_str_len, "%s", code_str);
+
+    if (code_str != NULL) {
+        entry->lua_code = (char*)malloc(code_str_len * sizeof(char));
+        snprintf(entry->lua_code, code_str_len, "%s", code_str);
+    }
+    if (func_ref != 0) {
+        entry->lua_func_ref = func_ref;
+    }
 
     HASH_ADD_STR(keychord_command_map, keychord, entry);
-fprintf(fdebug, "bound [%s] to [%s]\n", keychord_str, code_str);
 
     return 0;
 }
 
 int command_execute_write(lua_State* lua_state) {
 
-    control_t* control;
     char* str;
     int line = 0;
     int offset = 0;
     int new_line = 0;
     int new_offset = 0;
-
-    control = control_get_active_buffer_view();
+    control_t* control = control_get_active_buffer_view();
 
     if (!control || !control->buffer) {
         lua_pushboolean(lua_state, FALSE);
@@ -89,19 +101,62 @@ int command_execute_write(lua_State* lua_state) {
     control_set_cursor(control, new_line, new_offset);
 
     lua_pushboolean(lua_state, TRUE);
-
     return 1;
 }
 
-int command_execute_from_keychord(char* keychord, char* lua_code) {
+int command_execute_write_newline(lua_State* lua_state) {
+
+    int line = 0;
+    int offset = 0;
+    int new_line = 0;
+    int new_offset = 0;
+    control_t* control = control_get_active_buffer_view();
+
+    if (!control || !control->buffer) {
+        lua_pushboolean(lua_state, FALSE);
+        return 1;
+    }
+
+    control_get_cursor(control, &line, &offset);
+    buffer_insert_str(control->buffer, line, offset, "\n", 0, &new_line, &new_offset);
+    control_set_cursor(control, new_line, new_offset);
+
+    lua_pushboolean(lua_state, TRUE);
+    return 1;
+
+}
+
+int command_execute_write_tab(lua_State* lua_state) {
+    return 0;
+}
+
+int command_execute_delete_before(lua_State* lua_state) {
+    return 0;
+}
+
+int command_execute_delete_after(lua_State* lua_state) {
+    return 0;
+}
+
+int command_execute_cursor_move_offset(lua_State* lua_state) {
+    return 0;
+}
+
+int command_execute_cursor_move_line(lua_State* lua_state) {
+    return 0;
+}
+
+int command_execute_from_keychord(char* keychord) {
     keychord_command_map_t* entry = NULL;
     HASH_FIND_STR(keychord_command_map, keychord, entry);
     if (entry != NULL) {
-        lua_code = entry->lua_code;
-        luaL_dostring(lua_state, entry->lua_code);
-        //luaL_dostring(lua_state, "write('a')\n"); //entry->lua_code);
-    } else {
-fprintf(fdebug, "did not find command for keychord=[%s]\n", keychord);
+        if (entry->lua_func_ref != 0) {
+            lua_rawgeti(lua_state, LUA_REGISTRYINDEX, entry->lua_func_ref);
+            lua_pushstring(lua_state, keychord);
+            lua_pcall(lua_state, 1, 0, 0);
+        } else if (entry->lua_code != NULL) {
+            luaL_dostring(lua_state, entry->lua_code);
+        }
     }
     return 0;
 }

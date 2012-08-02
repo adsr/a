@@ -22,17 +22,12 @@ int main(int argc, char** argv) {
     fdebug = fopen("/tmp/mace.log", "a");
 
     char* keychord;
-    char* code = (char*)malloc(64 * sizeof(char));
 
     command_init();
     control_init();
     input_init();
 
-    char c;
-    for (c = 0x20; c <= 0x7e; c++) {
-        sprintf(code, "bind([[%c]], [[write('%c')]])", c, c);
-        luaL_dostring(lua_state, code);
-    }
+    luaL_dofile(lua_state, "macerc");
 
     do {
         control_render();
@@ -40,7 +35,12 @@ int main(int argc, char** argv) {
         if (keychord == NULL) {
             continue;
         }
-        command_execute_from_keychord(keychord, code);
+        control_set_status(keychord);
+        if (strcmp("resize", keychord) == 0) {
+            control_resize();
+        } else {
+            command_execute_from_keychord(keychord);
+        }
     } while(keychord == NULL || 0 != strcmp(keychord, "q"));
 
     clear();

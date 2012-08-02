@@ -25,13 +25,21 @@ typedef struct command_s {
 typedef struct keychord_command_map_s {
     char keychord[64];
     char* lua_code;
+    int lua_func_ref;
     UT_hash_handle hh;
 } keychord_command_map_t;
 
 int command_init();
-int command_execute_from_keychord(char* keychord, char* lua_code);
+int command_execute_from_keychord(char* keychord);
 
 int command_execute_write(lua_State* lua_state);
 int command_execute_bind(lua_State* lua_state);
+int command_execute_write_newline(lua_State* lua_state);
+int command_execute_write_tab(lua_State* lua_state);
+int command_execute_delete_before(lua_State* lua_state);
+int command_execute_delete_after(lua_State* lua_state);
+int command_execute_cursor_move_offset(lua_State* lua_state);
+int command_execute_cursor_move_line(lua_State* lua_state);
+
 
 #endif
