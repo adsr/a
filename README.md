@@ -1,7 +1,9 @@
-mace
-====
+macephp
+=======
 
-mace is a console-based text editor written in PHP.
+NOTE: macephp is now abandoned in favor of [mace](https://github.com/adsr/mace), the C port.
+
+macephp is a console-based text editor written in PHP.
 
 **Requirements**
 * PHP 5.3
@@ -18,7 +20,7 @@ mace is a console-based text editor written in PHP.
 
 2. Clone repo and run:
   <pre>
-  $ git clone git://github.com/adsr/mace.git
-  $ cd mace
+  $ git clone git://github.com/adsr/macephp.git
+  $ cd macephp
   $ ./mace
   </pre>
