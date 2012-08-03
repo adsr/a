@@ -38,8 +38,8 @@ int command_execute_write_newline(lua_State* lua_state);
 int command_execute_write_tab(lua_State* lua_state);
 int command_execute_delete_before(lua_State* lua_state);
 int command_execute_delete_after(lua_State* lua_state);
-int command_execute_cursor_move_offset(lua_State* lua_state);
-int command_execute_cursor_move_line(lua_State* lua_state);
-
+int command_execute_cursor_move(lua_State* lua_state);
+int command_execute_cursor_home(lua_State* lua_state);
+int command_execute_cursor_end(lua_State* lua_state);
 
 #endif

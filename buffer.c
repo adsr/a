@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "buffer.h"
@@ -248,7 +249,7 @@ int buffer_get_line_and_offset(buffer_t* buffer, int buffer_offset, int* line, i
 
 char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_end, int* line_count) {
 
-    int line, i;
+    int line;
     char** lines;
 
     *line_count = 0;
@@ -273,15 +274,30 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
 
 char* buffer_get_line(buffer_t* buffer, int line) {
 
-    int start_offset; // Inclusive start offset in buffer->buffer to return
-    int end_offset; // Inlcusive end offset in buffer->buffer to return
+    int start_offset = 0;
+    int length = 0;
     bstring line_str;
 
     if (line < 0 || line >= buffer->line_count) {
         return NULL;
     }
 
-    start_offset = buffer_get_buffer_offset(buffer, line, 0);
+    buffer_get_line_offset_and_length(buffer, line, &start_offset, &length);
+    line_str = bmidstr(buffer->buffer, start_offset, length);
+
+    return line_str != NULL ? (char*)line_str->data : NULL;
+
+}
+
+int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_offset, int* length) {
+
+    int end_offset; // Inlcusive end offset in buffer->buffer to return
+
+    if (line < 0 || line >= buffer->line_count) {
+        return 0;
+    }
+
+    *start_offset = buffer_get_buffer_offset(buffer, line, 0);
     if (line + 1 < buffer->line_count) {
         // Minus 1 is the previous newline
         // Minus 2 is the last char of the previous line
@@ -290,8 +306,17 @@ char* buffer_get_line(buffer_t* buffer, int line) {
         end_offset = buffer->char_count - 1; // Last char offset of buffer
     }
 
-    line_str = bmidstr(buffer->buffer, start_offset, end_offset - start_offset + 1);
+    *length = end_offset - *start_offset + 1;
 
-    return line_str != NULL ? (char*)line_str->data : NULL;
+    return 0;
 
+}
+
+int buffer_load_from_file(buffer_t* buffer, char* filename) {
+    FILE* fp = fopen(filename, "r");
+    if (fp == NULL) {
+        return 0;
+    }
+    buffer->buffer = bread((bNread)fread, fp);
+    return 0;
 }

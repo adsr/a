@@ -22,12 +22,22 @@ int main(int argc, char** argv) {
     fdebug = fopen("/tmp/mace.log", "a");
 
     char* keychord;
+    control_t* buffer_view;
 
     command_init();
     control_init();
     input_init();
 
-    luaL_dofile(lua_state, "macerc");
+    if (luaL_dofile(lua_state, "macerc") != LUA_OK) {
+        endwin();
+        printf("Lua error in macerc: %s\n", lua_tostring(lua_state, -1));
+        return EXIT_FAILURE;
+    }
+
+    if (argc == 2) {
+        buffer_view = control_get_active_buffer_view();
+        buffer_load_from_file(buffer_view->buffer, argv[1]);
+    }
 
     do {
         control_render();
