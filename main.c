@@ -12,6 +12,7 @@
 #include "command.h"
 #include "input.h"
 #include "control.h"
+#include "highlighter.h"
 
 extern lua_State* lua_state;
 
@@ -22,6 +23,7 @@ int main(int argc, char** argv) {
     fdebug = fopen("/tmp/mace.log", "a");
 
     char* keychord;
+    syntax_t* syntax_php;
     control_t* buffer_view;
 
     command_init();
@@ -37,6 +39,8 @@ int main(int argc, char** argv) {
     if (argc == 2) {
         buffer_view = control_get_active_buffer_view();
         buffer_load_from_file(buffer_view->buffer, argv[1]);
+        HASH_FIND_STR(syntaxes, "php", syntax_php);
+        buffer_view->highlighter = highlighter_new(buffer_view->buffer, syntax_php);
     }
 
     do {

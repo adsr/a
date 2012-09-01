@@ -3,6 +3,8 @@
 
 #include "control.h"
 #include "buffer.h"
+#include "highlighter.h"
+#include "util.h"
 
 extern FILE* fdebug;
 
@@ -14,15 +16,7 @@ control_t* active;
 
 int control_init() {
 
-    // Init ncurses
-    initscr();
-    raw();
-    noecho();
-    keypad(stdscr, TRUE);
-    start_color();
-    use_default_colors();
-    //init_pair(1, COLOR_BLACK, COLOR_RED);
-    curs_set(0);
+    ncurses_ensure_init();
 
     title_bar = control_new();
     title_bar->window_attrs = A_REVERSE;
@@ -40,6 +34,17 @@ int control_init() {
     waddstr(title_bar->window, "  GNU mace 0.0.1");
     wclrtoeol(title_bar->window);
 
+    return 0;
+}
+
+int ncurses_ensure_init() {
+    initscr();
+    raw();
+    noecho();
+    keypad(stdscr, TRUE);
+    start_color();
+    use_default_colors();
+    curs_set(1);
     return 0;
 }
 
@@ -87,7 +92,7 @@ control_t* control_new_buffer_view() {
     control->window_margin_left = newwin(1, 1, 1, 1);
     control->window_margin_right = newwin(1, 1, 1, 1);
     control->buffer = buffer_new();
-    buffer_add_listener(control->buffer, control);
+    buffer_add_listener(control->buffer, control_on_dirty_lines, (void*)control);
     control->resize = control_resize_buffer_view;
     control->render = control_render_buffer_view;
     control->is_first_render = TRUE;
@@ -185,11 +190,23 @@ int control_render_buffer_view(control_t* self) {
 }
 
 int control_buffer_view_render_line(control_t* self, char* line, int line_on_screen, int line_in_buffer) {
-    static char line_num_formatted[20];
-    //char* line_formatted = "    ";
-    // TODO syntax highlighting
 
-    mvwaddnstr(self->window, line_on_screen, 0, line, self->width);
+    static char line_num_formatted[20]; // TODO #define
+    static highlighted_substr_t* highlighted_substrs;
+    static int highlighted_substr_count = 0;
+    static int i;
+
+    // TODO syntax highlighting
+    if (self->highlighter != NULL) {
+        highlighted_substrs = highlighter_highlight(self->highlighter, line, line_in_buffer, &highlighted_substr_count);
+        wmove(self->window, line_on_screen, 0);
+        for (i = 0; i < highlighted_substr_count; i++) {
+            wattrset(self->window, highlighted_substrs[i].attrs);
+            mvwaddnstr(self->window, line_on_screen, highlighted_substrs[i].start_offset, highlighted_substrs[i].substr, highlighted_substrs[i].length);
+        }
+    } else {
+        mvwaddnstr(self->window, line_on_screen, 0, line, self->width);
+    }
     wclrtoeol(self->window);
 
     snprintf(line_num_formatted, self->window_line_num_width + 1, "% 4d", line_in_buffer + 1);
@@ -202,7 +219,7 @@ int control_buffer_view_clear_line(control_t* self, int line_on_screen) {
     wmove(self->window, line_on_screen, self->viewport_offset_start);
     wclrtoeol(self->window);
     wmove(self->window_line_num, line_on_screen, 0);
-    waddstr(self->window_line_num, "   ~");
+    waddstr(self->window_line_num, "   ~"); // TODO not this
     return 0;
 }
 
@@ -217,7 +234,11 @@ int control_buffer_view_clear_lines_from(control_t* self, int clear_line_start) 
     return 0;
 }
 
-int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int dirty_line_end, bool line_count_decreased) {
+void control_on_dirty_lines(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta) {
+    control_buffer_view_dirty_lines((control_t*)listener, line_start, line_end, line_delta);
+}
+
+int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int dirty_line_end, int line_delta) {
 
     char** lines;
     int line_count;
@@ -242,7 +263,7 @@ int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int d
         control_buffer_view_render_line(self, *(lines + i), dirty_line_start + i - self->viewport_line_start, dirty_line_start + i);
     }
 
-    if (line_count_decreased) {
+    if (line_delta < 0) {
         control_buffer_view_clear_lines_from(self, dirty_line_end + 1);
     }
 
@@ -277,6 +298,10 @@ int control_render_cursor() {
 int control_resize() {
     int width;
     int height;
+    control_t* active_buffer_view;
+
+    endwin();
+    refresh();
 
     getmaxyx(stdscr, height, width);
 
@@ -285,8 +310,10 @@ int control_resize() {
     prompt_bar->resize(prompt_bar, width, 1, 0, height - 1);
     multi_buffer_view->resize(multi_buffer_view, width, height - 3, 0, 1);
 
-    endwin();
-    refresh();
+    active_buffer_view = control_get_active_buffer_view();
+    if (active_buffer_view != NULL) {
+        active_buffer_view->is_first_render = TRUE;
+    }
 
     return 0;
 }

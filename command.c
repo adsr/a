@@ -1,14 +1,24 @@
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+#include <pcre.h>
 
 #include "ext/uthash/uthash.h"
 
 #include "command.h"
 #include "buffer.h"
 #include "control.h"
+#include "highlighter.h"
+#include "util.h"
 
 extern FILE* fdebug;
+
+/**
+ * test multi
+ * line highlighting
+ * /* wee
+ * include
+ */ int test; /* tricky multi line */
 
 lua_State* lua_state;
 command_t* commands = NULL;
@@ -34,6 +44,8 @@ int command_init() {
     COMMAND_REGISTER(commands, command_tmp, cursor_move);
     COMMAND_REGISTER(commands, command_tmp, cursor_home);
     COMMAND_REGISTER(commands, command_tmp, cursor_end);
+    COMMAND_REGISTER(commands, command_tmp, syntax_define);
+    COMMAND_REGISTER(commands, command_tmp, syntax_add_rule);
 
     // Init commands
     HASH_ITER(hh, commands, command_cur, command_tmp) {
@@ -281,6 +293,53 @@ int command_execute_cursor_end(lua_State* lua_state) {
     control_set_cursor(control, control->cursor_line, length, TRUE);
 
     lua_pushboolean(lua_state, TRUE);
+    return 1;
+
+}
+
+int command_execute_syntax_define(lua_State *L) {
+
+    syntax_t* syntax;
+
+    syntax = calloc(1, sizeof(syntax_t));
+    syntax->name = strdup(luaL_checkstring(L, 1));
+    syntax->regex_file_pattern = util_pcre_compile(luaL_checkstring(L, 2), NULL, NULL);
+    HASH_ADD_KEYPTR(hh, syntaxes, syntax->name, strlen(syntax->name), syntax);
+
+    lua_pushboolean(L, TRUE);
+    return 1;
+
+}
+
+int command_execute_syntax_add_rule(lua_State *L) {
+
+    syntax_t* syntax;
+    syntax_rule_single_t** rule;
+    char* name;
+    char* regex;
+    char* color_fg;
+    char* color_bg;
+
+    name = luaL_checkstring(L, 1);
+    regex = luaL_checkstring(L, 2);
+    color_fg = luaL_checkstring(L, 3);
+    color_bg = luaL_checkstring(L, 4);
+
+    HASH_FIND_STR(syntaxes, name, syntax);
+    if (syntax == NULL) {
+        lua_pushboolean(L, FALSE);
+        return 1;
+    }
+
+    rule = &(syntax->rule_single_head);
+
+    while (*rule != NULL) {
+        rule = &((*rule)->next);
+    }
+    *rule = syntax_rule_single_new(regex, util_ncurses_getpair(color_fg, color_bg));
+    (*rule)->regex_str = strdup(regex);
+
+    lua_pushboolean(L, TRUE);
     return 1;
 
 }

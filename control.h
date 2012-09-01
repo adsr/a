@@ -26,6 +26,7 @@ typedef struct control_s {
     WINDOW* window_margin_left;
     WINDOW* window_margin_right;
     int window_attrs;
+    struct highlighter_s* highlighter;
     int (*resize)(struct control_s* self, int width, int height, int left, int top);
     int (*render)(struct control_s* self);
     struct control_s* buffer_view;
@@ -71,7 +72,8 @@ int control_render_multi_buffer_view(control_t* self);
 int control_render_multi_buffer_view_node(control_t* self);
 int control_render_buffer_view(control_t* self);
 
-int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int dirty_line_end, bool line_count_decreased);
+void control_on_dirty_lines(struct buffer_s* buffer, void* listener, int line_start, int line_end, int line_delta);
+int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int dirty_line_end, int line_delta);
 int control_buffer_view_render_line(control_t* self, char* line, int line_on_screen, int line_in_buffer);
 int control_buffer_view_clear_line(control_t* self, int line);
 int control_buffer_view_clear_lines_from(control_t* self, int clear_line_start);

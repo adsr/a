@@ -34,6 +34,7 @@ int buffer_insert_str(
     int new_buffer_offset;
     bstring insert_str = bfromcstr(str);
     int chars_to_insert = blength(insert_str);
+    int line_delta;
 
     if (chars_to_delete > 0) {
         // Delete chars_to_delete chars at buffer_offset
@@ -61,36 +62,31 @@ int buffer_insert_str(
     buffer_get_line_and_offset(buffer, new_buffer_offset, new_line, new_offset);
 
     // Flag lines as dirty
-    if (buffer->line_count == pre_line_count) {
+    line_delta = buffer->line_count - pre_line_count;
+    if (line_delta == 0) {
         buffer_dirty_lines(
             buffer,
             (line < *new_line ? line : *new_line),
             (line > *new_line ? line : *new_line),
-            FALSE
+            line_delta
         );
-    } else if (buffer->line_count > pre_line_count) {
+    } else { // line_delta != 0 (line count changed)
         buffer_dirty_lines(
             buffer,
             (line < *new_line ? line : *new_line),
             buffer->line_count - 1,
-            FALSE
-        );
-    } else { // buffer->line_count < pre_line_count
-        buffer_dirty_lines(
-            buffer,
-            (line < *new_line ? line : *new_line),
-            buffer->line_count - 1,
-            TRUE
+            line_delta
         );
     }
 
     return 0;
 }
 
-int buffer_add_listener(buffer_t* buffer, control_t* control) {
+int buffer_add_listener(buffer_t* buffer, void (*on_dirty_lines)(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta), void* listener) {
     buffer_listener_t* node = (buffer_listener_t*)calloc(1, sizeof(buffer_listener_t));
     buffer_listener_t* cur_node;
-    node->control = control;
+    node->listener = listener;
+    node->on_dirty_lines = on_dirty_lines;
     node->next = NULL;
     if (buffer->buffer_listener_head == NULL) {
         buffer->buffer_listener_head = node;
@@ -176,12 +172,18 @@ int buffer_calc_line_offsets(buffer_t* buffer) {
     return 0;
 }
 
-int buffer_dirty_lines(buffer_t* buffer, int line_start, int line_end, bool line_count_decreased) {
+int buffer_dirty_lines(buffer_t* buffer, int line_start, int line_end, int line_delta) {
     buffer_listener_t* cur_node;
     cur_node = buffer->buffer_listener_head;
     while (cur_node) {
-       control_buffer_view_dirty_lines(cur_node->control, line_start, line_end, line_count_decreased);
-       cur_node = cur_node->next;
+        cur_node->on_dirty_lines(
+            buffer,
+            cur_node->listener,
+            line_start,
+            line_end,
+            line_delta
+        );
+        cur_node = cur_node->next;
     }
     return 0;
 }
@@ -318,5 +320,6 @@ int buffer_load_from_file(buffer_t* buffer, char* filename) {
         return 0;
     }
     buffer->buffer = bread((bNread)fread, fp);
+    buffer_calc_line_offsets(buffer);
     return 0;
 }
