@@ -160,10 +160,12 @@ void highlighter_on_dirty_lines(buffer_t* buffer, void* listener, int line_start
     syntax_rule_multi_workspace_t* workspace;
 
     while (cur_rule != NULL) {
+        // TODO we can skip this iter if the lines edited do not contain start/end matches for this rule
         workspace = syntax_rule_multi_workspace_find_or_new(cur_rule, buffer);
         highlighter_update_offsets(buffer, cur_rule->regex_start, buffer_offset, workspace->start_offsets, FALSE);
         highlighter_update_offsets(buffer, cur_rule->regex_end, buffer_offset, workspace->end_offsets, TRUE);
         highlighter_update_lines(workspace);
+        // TODO for ranges outside of line_start to line_end, we should invoke buffer_dirty_lines
         cur_rule = cur_rule->next;
     }
 
