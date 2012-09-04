@@ -46,6 +46,7 @@ int command_init() {
     COMMAND_REGISTER(commands, command_tmp, cursor_end);
     COMMAND_REGISTER(commands, command_tmp, syntax_define);
     COMMAND_REGISTER(commands, command_tmp, syntax_add_rule);
+    COMMAND_REGISTER(commands, command_tmp, syntax_add_rule_multi);
 
     // Init commands
     HASH_ITER(hh, commands, command_cur, command_tmp) {
@@ -319,11 +320,13 @@ int command_execute_syntax_add_rule(lua_State *L) {
     char* regex;
     char* color_fg;
     char* color_bg;
+    int other_attrs = 0;
 
     name = luaL_checkstring(L, 1);
     regex = luaL_checkstring(L, 2);
     color_fg = luaL_checkstring(L, 3);
     color_bg = luaL_checkstring(L, 4);
+    other_attrs = luaL_checkint(L, 5);
 
     HASH_FIND_STR(syntaxes, name, syntax);
     if (syntax == NULL) {
@@ -336,8 +339,46 @@ int command_execute_syntax_add_rule(lua_State *L) {
     while (*rule != NULL) {
         rule = &((*rule)->next);
     }
-    *rule = syntax_rule_single_new(regex, util_ncurses_getpair(color_fg, color_bg));
+    *rule = syntax_rule_single_new(regex, util_ncurses_getpair(color_fg, color_bg) | other_attrs);
     (*rule)->regex_str = strdup(regex);
+
+    lua_pushboolean(L, TRUE);
+    return 1;
+
+}
+
+int command_execute_syntax_add_rule_multi(lua_State *L) {
+
+    syntax_t* syntax;
+    syntax_rule_multi_t** rule;
+    char* name;
+    char* regex_start;
+    char* regex_end;
+    char* color_fg;
+    char* color_bg;
+    int other_attrs = 0;
+
+    name = luaL_checkstring(L, 1);
+    regex_start = luaL_checkstring(L, 2);
+    regex_end = luaL_checkstring(L, 3);
+    color_fg = luaL_checkstring(L, 4);
+    color_bg = luaL_checkstring(L, 5);
+    other_attrs = luaL_checkint(L, 6);
+
+    HASH_FIND_STR(syntaxes, name, syntax);
+    if (syntax == NULL) {
+        lua_pushboolean(L, FALSE);
+        return 1;
+    }
+
+    rule = &(syntax->rule_multi_head);
+
+    while (*rule != NULL) {
+        rule = &((*rule)->next);
+    }
+    *rule = syntax_rule_multi_new(regex_start, regex_end, util_ncurses_getpair(color_fg, color_bg) | other_attrs);
+    (*rule)->regex_start_str = strdup(regex_start);
+    (*rule)->regex_end_str = strdup(regex_end);
 
     lua_pushboolean(L, TRUE);
     return 1;

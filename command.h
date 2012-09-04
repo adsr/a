@@ -43,5 +43,6 @@ int command_execute_cursor_home(lua_State* lua_state);
 int command_execute_cursor_end(lua_State* lua_state);
 int command_execute_syntax_define(lua_State *L);
 int command_execute_syntax_add_rule(lua_State *L);
+int command_execute_syntax_add_rule_multi(lua_State *L);
 
 #endif

@@ -12,11 +12,20 @@ typedef struct buffer_s {
     unsigned int line_count;
     UT_array* line_offsets;
     struct buffer_listener_s* buffer_listener_head;
+    void* key;
 } buffer_t;
+
+typedef void (*buffer_on_dirty_lines_fn)(
+    struct buffer_s* buffer,
+    void* listener,
+    int line_start,
+    int line_end,
+    int line_delta
+);
 
 typedef struct buffer_listener_s {
     void* listener;
-    void (*on_dirty_lines)(struct buffer_s* buffer, void* listener, int line_start, int line_end, int line_delta);
+    buffer_on_dirty_lines_fn on_dirty_lines;
     void* next;
 } buffer_listener_t;
 
@@ -35,7 +44,7 @@ int buffer_get_buffer_offset(buffer_t* buffer, int line, int offset);
 int buffer_calc_line_offsets(buffer_t* buffer);
 int buffer_dirty_lines(buffer_t* buffer, int line_start, int line_end, int line_delta);
 int buffer_get_line_and_offset(buffer_t* buffer, int new_buffer_offset, int* new_line, int* new_offset);
-int buffer_add_listener(buffer_t* buffer, void (*on_dirty_lines)(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta), void* listener);
+int buffer_add_listener(buffer_t* buffer, buffer_on_dirty_lines_fn on_dirty_lines, void* listener);
 int buffer_load_from_file(buffer_t* buffer, char* filename);
 
 char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_end, int* line_count);

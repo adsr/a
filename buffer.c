@@ -7,6 +7,11 @@
 
 extern FILE* fdebug;
 
+/**
+ * Make a new buffer
+ *
+ * @return buffer_t* new buffer
+ */
 buffer_t* buffer_new() {
     int zero = 0;
     buffer_t* buffer = (buffer_t*)calloc(1, sizeof(buffer_t));
@@ -19,6 +24,17 @@ buffer_t* buffer_new() {
     return buffer;
 }
 
+/**
+ * Insert a string into a buffer
+ *
+ * @param buffer_t* buffer
+ * @param int line cursor line
+ * @param int offset cursor offset
+ * @param const char* str string to insert
+ * @param int chars_to_delete
+ * @param int* new_line cursor line after insert
+ * @param int* new_offset cursor offset after insert
+ */
 int buffer_insert_str(
     buffer_t* buffer,
     int line,
@@ -54,9 +70,6 @@ int buffer_insert_str(
 
     // Calculate new_buffer_offset
     new_buffer_offset = buffer_offset + chars_to_insert;
-    //if (new_buffer_offset < 0) {
-    //    new_buffer_offset = 0;
-    //}
 
     // Calculate line and offset of new_buffer_offset
     buffer_get_line_and_offset(buffer, new_buffer_offset, new_line, new_offset);
@@ -82,24 +95,33 @@ int buffer_insert_str(
     return 0;
 }
 
-int buffer_add_listener(buffer_t* buffer, void (*on_dirty_lines)(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta), void* listener) {
+/**
+ * Add a listener that will be notified when buffer is modified
+ *
+ * @param buffer_t* buffer
+ * @param buffer_on_dirty_lines_fn function pointer to handler
+ * @param void* listener
+ */
+int buffer_add_listener(buffer_t* buffer, buffer_on_dirty_lines_fn on_dirty_lines, void* listener) {
+    buffer_listener_t* head;
     buffer_listener_t* node = (buffer_listener_t*)calloc(1, sizeof(buffer_listener_t));
-    buffer_listener_t* cur_node;
+    buffer_listener_t** node_ref;
     node->listener = listener;
     node->on_dirty_lines = on_dirty_lines;
-    node->next = NULL;
-    if (buffer->buffer_listener_head == NULL) {
-        buffer->buffer_listener_head = node;
-    } else {
-        cur_node = buffer->buffer_listener_head;
-        while (cur_node->next != NULL) {
-            cur_node = cur_node->next;
-        }
-        cur_node->next = node;
-    }
+    head = buffer->buffer_listener_head;
+    buffer->buffer_listener_head = node;
+    node->next = head;
     return 0;
 }
 
+/**
+ * Given a line and offset, return buffer offset
+ *
+ * @param buffer_t* buffer
+ * @param int line
+ * @param int offset
+ * @return int
+ */
 int buffer_get_buffer_offset(buffer_t* buffer, int line, int offset) {
 
     int buffer_offset;
@@ -134,6 +156,12 @@ int buffer_get_buffer_offset(buffer_t* buffer, int line, int offset) {
     return buffer_offset;
 }
 
+/**
+ * Find buffer offset of the start of all lines
+ * These values are stored in buffer->line_offsets
+ *
+ * @param buffer_t* buffer
+ */
 int buffer_calc_line_offsets(buffer_t* buffer) {
 
     int look_offset = 0;
@@ -172,6 +200,14 @@ int buffer_calc_line_offsets(buffer_t* buffer) {
     return 0;
 }
 
+/**
+ * Mark line_start to line_end (inclusive) as having been modified (dirty)
+ *
+ * @param buffer_t* buffer
+ * @param int line_start
+ * @param int line_end
+ * @param int line_delta can be negative, positive, or zero
+ */
 int buffer_dirty_lines(buffer_t* buffer, int line_start, int line_end, int line_delta) {
     buffer_listener_t* cur_node;
     cur_node = buffer->buffer_listener_head;
@@ -188,6 +224,14 @@ int buffer_dirty_lines(buffer_t* buffer, int line_start, int line_end, int line_
     return 0;
 }
 
+/**
+ * Given a buffer offset, return the line and offset
+ *
+ * @param buffer_t* buffer
+ * @param int buffer_offset
+ * @param int* line
+ * @param int* offset
+ */
 int buffer_get_line_and_offset(buffer_t* buffer, int buffer_offset, int* line, int* offset) {
 
     int prev_start_offset = 0;
@@ -249,6 +293,14 @@ int buffer_get_line_and_offset(buffer_t* buffer, int buffer_offset, int* line, i
 
 }
 
+/**
+ * Get line(s) from buffer as an array of character arrays
+ *
+ * @param buffer_t* buffer
+ * @param int dirty_line_start
+ * @param int dirty_line_end
+ * @param int* line_count
+ */
 char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_end, int* line_count) {
 
     int line;
@@ -261,7 +313,7 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
         return NULL;
     }
 
-    lines = (char**)malloc(line_count_max * sizeof(char*));
+    lines = (char**)malloc(line_count_max * sizeof(char*)); // TODO need to restructure / free this memory
     for (line = dirty_line_start; line <= dirty_line_end; line++) {
         *(lines + *line_count) = buffer_get_line(buffer, line);
         if (*(lines + *line_count) == NULL) {
@@ -274,6 +326,13 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
 
 }
 
+/**
+ * Get a single line from buffer as a character array
+ *
+ * @param buffer_t* buffer
+ * @param int line
+ * @return char* line
+ */
 char* buffer_get_line(buffer_t* buffer, int line) {
 
     int start_offset = 0;
@@ -291,6 +350,14 @@ char* buffer_get_line(buffer_t* buffer, int line) {
 
 }
 
+/**
+ * Given a line number, return its starting buffer offset and its length
+ *
+ * @param buffer_t* buffer
+ * @param int line
+ * @param int* start_offset
+ * @param int* length
+ */
 int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_offset, int* length) {
 
     int end_offset; // Inlcusive end offset in buffer->buffer to return
@@ -314,6 +381,12 @@ int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_off
 
 }
 
+/**
+ * Load buffer from a file
+ *
+ * @param buffer_t* buffer
+ * @param char* filename
+ */
 int buffer_load_from_file(buffer_t* buffer, char* filename) {
     FILE* fp = fopen(filename, "r");
     if (fp == NULL) {
