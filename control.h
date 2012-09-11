@@ -44,6 +44,11 @@ typedef struct control_s {
     bool is_first_render;
 } control_t;
 
+typedef struct control_buffer_view_list_s {
+    control_t* buffer_view;
+    control_t* next;
+} control_buffer_view_list_t;
+
 int control_init();
 int control_resize();
 int control_render();

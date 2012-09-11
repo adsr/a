@@ -18,7 +18,7 @@ extern FILE* fdebug;
  * line highlighting
  * /* wee
  * include
- */ int test; /* tricky multi line */
+ */ int test;
 
 lua_State* lua_state;
 command_t* commands = NULL;
@@ -359,8 +359,8 @@ int command_execute_syntax_add_rule_multi(lua_State *L) {
     int other_attrs = 0;
 
     name = luaL_checkstring(L, 1);
-    regex_start = luaL_checkstring(L, 2);
-    regex_end = luaL_checkstring(L, 3);
+    regex_start = strdup(luaL_checkstring(L, 2));
+    regex_end = strdup(luaL_checkstring(L, 3));
     color_fg = luaL_checkstring(L, 4);
     color_bg = luaL_checkstring(L, 5);
     other_attrs = luaL_checkint(L, 6);
@@ -377,8 +377,8 @@ int command_execute_syntax_add_rule_multi(lua_State *L) {
         rule = &((*rule)->next);
     }
     *rule = syntax_rule_multi_new(regex_start, regex_end, util_ncurses_getpair(color_fg, color_bg) | other_attrs);
-    (*rule)->regex_start_str = strdup(regex_start);
-    (*rule)->regex_end_str = strdup(regex_end);
+    (*rule)->regex_start_str = regex_start;
+    (*rule)->regex_end_str = regex_end;
 
     lua_pushboolean(L, TRUE);
     return 1;

@@ -1,6 +1,8 @@
 #include <ncurses.h>
 #include <math.h>
 
+#include "ext/uthash/uthash.h"
+
 #include "control.h"
 #include "buffer.h"
 #include "highlighter.h"
@@ -14,9 +16,13 @@ control_t* status_bar;
 control_t* prompt_bar;
 control_t* active;
 
+control_buffer_view_list_t* buffer_views;
+
 int control_init() {
 
     ncurses_ensure_init();
+
+    buffer_views = (control_buffer_view_list_t*)calloc(1, sizeof(control_buffer_view_list_t));
 
     title_bar = control_new();
     title_bar->window_attrs = A_REVERSE;
@@ -183,7 +189,8 @@ int control_resize_buffer_view(control_t* self, int width, int height, int left,
 
 int control_render_buffer_view(control_t* self) {
     if (self->is_first_render) {
-        control_buffer_view_dirty_lines(self, 0, self->height - 1, FALSE);
+        buffer_dirty_lines(self->buffer, 0, self->buffer->line_count - 1, -1);
+        //control_buffer_view_dirty_lines(self, 0, self->height - 1, FALSE);
         self->is_first_render = FALSE;
     }
     return 0;

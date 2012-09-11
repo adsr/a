@@ -193,6 +193,9 @@ int buffer_calc_line_offsets(buffer_t* buffer) {
         look_offset = newline_offset;
     }
 
+    // Resize
+    utarray_resize(buffer->line_offsets, line_count);
+
     // Update line_count and char_count
 	buffer->line_count = line_count;
     buffer->char_count = blength(buffer->buffer);

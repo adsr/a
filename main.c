@@ -54,9 +54,9 @@ int main(int argc, char** argv) {
     if (argc == 2) {
         // TODO load multiple files
         buffer_view = control_get_active_buffer_view();
-        buffer_load_from_file(buffer_view->buffer, argv[1]);
         HASH_FIND_STR(syntaxes, "php", syntax_php); // TODO apply syntax that matches rule in syntax_define()
         buffer_view->highlighter = highlighter_new(buffer_view->buffer, syntax_php);
+        buffer_load_from_file(buffer_view->buffer, argv[1]);
     }
 
     // Main program loop

@@ -154,18 +154,29 @@ highlighted_substr_t* highlighter_highlight(highlighter_t* self, char* line, int
 
 void highlighter_on_dirty_lines(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta) {
 
+    int line;
+    bool overlaps_with_multi_range;
     highlighter_t* self = (highlighter_t*)listener;
     int buffer_offset = buffer_get_buffer_offset(buffer, line_start, 0);
     syntax_rule_multi_t* cur_rule = self->syntax->rule_multi_head;
     syntax_rule_multi_workspace_t* workspace;
+    syntax_rule_multi_range_t* range;
 
     while (cur_rule != NULL) {
-        // TODO we can skip this iter if the lines edited do not contain start/end matches for this rule
         workspace = syntax_rule_multi_workspace_find_or_new(cur_rule, buffer);
-        highlighter_update_offsets(buffer, cur_rule->regex_start, buffer_offset, workspace->start_offsets, FALSE);
-        highlighter_update_offsets(buffer, cur_rule->regex_end, buffer_offset, workspace->end_offsets, TRUE);
-        highlighter_update_lines(workspace);
-        // TODO for ranges outside of line_start to line_end, we should invoke buffer_dirty_lines
+        overlaps_with_multi_range = FALSE;
+        for (line = line_start; line <= line_end; line++) {
+            range = utarray_eltptr(workspace->ranges, line);
+            if (range && range->active) {
+                overlaps_with_multi_range = TRUE;
+                break;
+            }
+        }
+        if (overlaps_with_multi_range || syntax_rule_multi_lines_contain_match(cur_rule, buffer, line_start, line_end)) {
+            highlighter_update_offsets(buffer, cur_rule->regex_start, buffer_offset, workspace->start_offsets, FALSE);
+            highlighter_update_offsets(buffer, cur_rule->regex_end, buffer_offset, workspace->end_offsets, TRUE);
+            highlighter_update_lines(workspace, line_start, line_end);
+        }
         cur_rule = cur_rule->next;
     }
 
@@ -178,6 +189,7 @@ int highlighter_update_offsets(buffer_t* buffer, pcre* regex, int look_offset, U
     int rc;
     static int ovector[3];
     int offsets_len = utarray_len(offsets);
+    look_offset = 0;
 
     while (0) {
         if (offset_index < offsets_len) {
@@ -215,14 +227,13 @@ int highlighter_update_offsets(buffer_t* buffer, pcre* regex, int look_offset, U
         } else {
             *offset = ovector[0];
         }
-        // *offset = is_end_offset ? (ovector[1] - 1) : ovector[0];
 
         look_offset = ovector[1];
         offset_index += 1;
 
     }
 
-    utarray_resize(offsets, offset_index + 1);
+    utarray_resize(offsets, offset_index);
 
 }
 
@@ -231,7 +242,7 @@ int highlighter_update_offsets(buffer_t* buffer, pcre* regex, int look_offset, U
  *
  * @param syntax_rule_multi_workspace_t* workspace
  */
-int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace) { // TODO optimize
+int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace, int line_start, int line_end) { // TODO optimize
 
     int i;
     int line;
@@ -249,13 +260,18 @@ int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace) { // TODO
     bool found;
     int line_length;
     syntax_rule_multi_range_t* range;
+    bool was_active;
     buffer_t* buffer = workspace->buffer;
 
     // Reset ranges
     utarray_resize(workspace->ranges, buffer->line_count);
     for (i = 0; i < buffer->line_count; i++) {
         range = (syntax_rule_multi_range_t*)utarray_eltptr(workspace->ranges, i);
+        was_active = range->active;
         syntax_rule_multi_range_dtor((void*)range);
+        if (was_active) {
+            control_buffer_view_dirty_lines(control_get_active_buffer_view(), i, i, 0);
+        }
     }
 
     // Find ranges using (start|end)_offsets
@@ -266,7 +282,7 @@ int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace) { // TODO
     end_offsets_i = 0;
     range_start_offset = -1;
     range_end_offset = -1;
-    line = 0;
+
     while (start_offsets_i < start_offsets_len && end_offsets_i < end_offsets_len) {
 
         // Find next start_offsets value greater than range_end_offset
@@ -321,6 +337,14 @@ int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace) { // TODO
             }
         }
 
+        // Trigger line refresh
+        for (line = range_start_line; line <= range_end_line; line++) {
+            if (line < line_start || line > line_end) {
+                // TODO this is broken; loop through all buffer_views associated with buffer and refresh them
+                control_buffer_view_dirty_lines(control_get_active_buffer_view(), line, line, 0);
+            }
+        }
+
     }
 
     return 0;
@@ -368,7 +392,6 @@ int syntax_rule_multi_add_range(syntax_rule_multi_workspace_t* workspace, int li
             break;
         }
     }
-fprintf(fdebug, "multi highlighting %d thru %d on line %d\n", start_offset, end_offset, line);
     return syntax_rule_multi_range_make(range_ref, start_offset, end_offset);
 }
 
@@ -400,4 +423,47 @@ void syntax_rule_multi_range_dtor(void* el) {
         }
         range = temp;
     }
+}
+
+bool syntax_rule_multi_lines_contain_match(syntax_rule_multi_t* rule, buffer_t* buffer, int line_start, int line_end) {
+
+    int rc;
+    int line_length;
+    int end_offset;
+    int start_offset;
+    int ovector[3];
+
+    start_offset = buffer_get_buffer_offset(buffer, line_start, 0);
+    buffer_get_line_offset_and_length(buffer, line_end, &end_offset, &line_length);
+    end_offset += line_length;
+
+    rc = pcre_exec(
+        rule->regex_start,
+        NULL,
+        buffer->buffer->data + start_offset,
+        end_offset - start_offset,
+        0,
+        0,
+        NULL,
+        0
+    );
+    if (rc >= 0) {
+        return TRUE;
+    }
+
+    rc = pcre_exec(
+        rule->regex_end,
+        NULL,
+        buffer->buffer->data + start_offset,
+        end_offset - start_offset,
+        0,
+        0,
+        NULL,
+        0
+    );
+    if (rc >= 0) {
+        return TRUE;
+    }
+
+    return FALSE;
 }

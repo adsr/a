@@ -62,6 +62,7 @@ typedef struct syntax_rule_multi_workspace_s {
 
 typedef struct syntax_rule_multi_range_s {
     bool active;
+    bool whole_line;
     int start_offset;
     int end_offset;
     struct syntax_rule_multi_range_s* next;
@@ -71,13 +72,14 @@ highlighter_t* highlighter_new(buffer_t* buffer, syntax_t* syntax);
 highlighted_substr_t* highlighter_highlight(highlighter_t* self, char* line, int line_in_buffer, int* highlighted_substr_count);
 void highlighter_on_dirty_lines(buffer_t* buffer, void* listener, int line_start, int line_end, int line_delta);
 int highlighter_update_offsets(buffer_t* buffer, pcre* regex, int look_offset, UT_array* offsets, bool is_end_offset);
-int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace);
+int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace, int line_start, int line_end);
 syntax_rule_single_t* syntax_rule_single_new(char* regex, int attrs);
 syntax_rule_multi_t* syntax_rule_multi_new(char* regex_start, char* regex_end, int attrs);
 syntax_rule_multi_workspace_t* syntax_rule_multi_workspace_find_or_new(syntax_rule_multi_t* rule, buffer_t* buffer);
 int syntax_rule_multi_add_range(syntax_rule_multi_workspace_t* workspace, int line, int start_offset, int end_offset);
 int syntax_rule_multi_range_make(syntax_rule_multi_range_t** range_ref, int start_offset, int end_offset);
 void syntax_rule_multi_range_dtor(void* el);
+bool syntax_rule_multi_lines_contain_match(syntax_rule_multi_t* rule, buffer_t* buffer, int line_start, int line_end);
 
 extern syntax_t* syntaxes;
 
