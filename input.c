@@ -5,15 +5,16 @@
 
 key_trie_node_t* key_trie_root = NULL;
 
-char* input_get_keychord(int(*getch)()) {
+extern FILE* fdebug;
+
+keychord_t* input_get_keychord(int(*getch)()) {
     int code;
     key_trie_node_t* cur_node = key_trie_root->child;
+    static keychord_t keychord;
+    static int codes[MAX_INPUT_CODE_LEN];
+    int code_index = 0;
 
-    if (cur_node == NULL) {
-        return NULL;
-    }
-
-    while(1) {
+    while (code_index < MAX_INPUT_CODE_LEN) {
         code = (*getch)();
         while (cur_node != NULL && cur_node->code != code) {
             cur_node = cur_node->sibling;
@@ -21,13 +22,34 @@ char* input_get_keychord(int(*getch)()) {
                 break;
             }
         }
-        if (cur_node == NULL || cur_node->child == NULL) {
+        if (cur_node == NULL) {
+            break;
+        }
+        codes[code_index] = code;
+        code_index += 1;
+        if (cur_node->child == NULL) {
             break;
         }
         cur_node = cur_node->child;
     }
 
-    return cur_node != NULL ? cur_node->keychord : NULL;
+    if (cur_node != NULL) {
+        keychord.name = cur_node->keychord;
+        keychord.codes = &codes;
+        keychord.code_count = code_index;
+        if (code_index == 1 && codes[0] >= 0x20 && codes[0] <= 0x7e) {
+            sprintf(&(keychord.ascii), "%c", (char)codes[0]);
+        } else {
+            sprintf(&(keychord.ascii), "");
+        }
+    } else {
+        keychord.name = "";
+        keychord.codes = NULL;
+        keychord.code_count = 0;
+        sprintf(&(keychord.ascii), "");
+    }
+
+    return &keychord;
 }
 
 void input_init() {

@@ -5,6 +5,9 @@
 #include <lauxlib.h>
 #include <lualib.h>
 
+#include "input.h"
+#include "control.h"
+
 #include "ext/uthash/uthash.h"
 
 #define COMMAND_REGISTER(CMDS, TMP, CMD) \
@@ -22,27 +25,34 @@ typedef struct command_s {
     UT_hash_handle hh;
 } command_t;
 
-typedef struct keychord_command_map_s {
-    char keychord[64];
-    char* lua_code;
-    int lua_func_ref;
-    UT_hash_handle hh;
-} keychord_command_map_t;
-
 int command_init();
-int command_execute_from_keychord(char* keychord);
+int command_handle_keychord(keychord_t* keychord);
 
-int command_execute_write(lua_State* lua_state);
-int command_execute_bind(lua_State* lua_state);
-int command_execute_write_newline(lua_State* lua_state);
-int command_execute_write_tab(lua_State* lua_state);
-int command_execute_delete_before(lua_State* lua_state);
-int command_execute_delete_after(lua_State* lua_state);
-int command_execute_cursor_move(lua_State* lua_state);
-int command_execute_cursor_home(lua_State* lua_state);
-int command_execute_cursor_end(lua_State* lua_state);
-int command_execute_syntax_define(lua_State *L);
-int command_execute_syntax_add_rule(lua_State *L);
-int command_execute_syntax_add_rule_multi(lua_State *L);
+control_t* command_get_buffer_view_by_id_at_arg(lua_State *L, int argn);
+
+int command_execute_buffer_write(lua_State* lua_state);
+int command_execute_buffer_write_newline(lua_State* lua_state);
+int command_execute_buffer_write_tab(lua_State* lua_state);
+int command_execute_buffer_delete_before(lua_State* lua_state);
+int command_execute_buffer_delete_after(lua_State* lua_state);
+int command_execute_buffer_cursor_move(lua_State* lua_state);
+int command_execute_buffer_cursor_home(lua_State* lua_state);
+int command_execute_buffer_cursor_end(lua_State* lua_state);
+int command_execute_buffer_get_prompt_id(lua_State* L);
+int command_execute_buffer_get_active_id(lua_State* L);
+int command_execute_buffer_set_active_id(lua_State* L);
+int command_execute_buffer_get_line(lua_State* L);
+int command_execute_buffer_clear(lua_State* L);
+int command_execute_buffer_find_all(lua_State* L);
+int command_execute_buffer_cursor_get(lua_State* L);
+int command_execute_buffer_cursor_set(lua_State* L);
+int command_execute_buffer_get_range(lua_State* L);
+int command_execute_highlight(lua_State* L);
+int command_execute_buffer_split(lua_State* L);
+int command_execute_buffer_unsplit(lua_State* L);
+int command_execute_syntax_define(lua_State* L);
+int command_execute_syntax_add_rule(lua_State* L);
+int command_execute_syntax_add_rule_multi(lua_State* L);
+int command_execute_input_set_hook(lua_State* L);
 
 #endif

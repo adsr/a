@@ -1,21 +1,6 @@
-A_NORMAL = 0
-A_BOLD = 2097152
-
-for code=33,126 do
-    bind(string.char(code), "write([[" .. string.char(code) .. "]])")
-end
-bind('space', "write(' ')")
-bind('enter', 'write_newline()')
-bind('tab', 'write_tab()')
-bind('backspace', 'delete_before()')
-bind('delete', 'delete_after()')
-bind('up', 'cursor_move(-1, 0)')
-bind('down', 'cursor_move(1, 0)')
-bind('left', 'cursor_move(0, -1)')
-bind('right', 'cursor_move(0, 1)')
-bind('home', 'cursor_home()')
-bind('end', 'cursor_end()')
-
+-- Define syntax
+local A_NORMAL = 0
+local A_BOLD = 2097152
 syntax_define("php", [=[\.php$]=])
 syntax_add_rule("php", [=[\$[a-zA-Z_0-9$]*|[=!<>-]]=], "green", "default_bg", A_NORMAL)
 syntax_add_rule("php", [=[\b(class|var|const|static|final|private|public|protected|function|switch|case|default|endswitch|if|else|elseif|endif|for|foreach|endfor|endforeach|while|endwhile|new|die|echo|continue|exit)\b]=], "yellow", "default_bg", A_NORMAL)
@@ -30,6 +15,156 @@ syntax_add_rule("php", [=["([^"]|(\\"))*"]=], "yellow", "default_bg", A_BOLD)
 syntax_add_rule("php", [=[(#.*|//.*)$]=], "cyan", "default_bg", A_NORMAL)
 syntax_add_rule("php", [=[(<\?(php)?|\?>)]=], "green", "default_bg", A_NORMAL)
 syntax_add_rule("php", [=[\s+$]=], "default_fg", "green", A_NORMAL)
-
 syntax_add_rule_multi("php", [[/\*]], [[\*/]], "cyan", "default_bg", A_NORMAL)
--- syntax_add_rule_multi("php", [[\?>]], [[<\?(php)?]], "white", "default_bg", A_NORMAL)
+syntax_add_rule_multi("php", [[\?>]], [[<\?(php)?]], "white", "default_bg", A_NORMAL)
+
+-- Set input hook
+input_set_hook(function(keychord)
+    local prompt_id = buffer_get_prompt_id()
+    local active_id = buffer_get_active_id()
+    local active_mode = mode_peek(active_id)
+    local is_prompt = active_id == prompt_id
+    local is_buffer = not is_prompt
+
+    -- buffer + prompt common commands
+    if keychord.ascii ~= "" then
+        buffer_write(active_id, keychord.ascii)
+    elseif keychord.name == "backspace" then
+        buffer_delete_before(active_id);
+    elseif keychord.name == "delete" then
+        buffer_delete_after(active_id)
+    elseif keychord.name == "left" then
+        buffer_cursor_move(active_id, 0, -1)
+    elseif keychord.name == "right" then
+        buffer_cursor_move(active_id, 0, 1)
+    elseif keychord.name == "home" then
+        buffer_cursor_home(active_id)
+    elseif keychord.name == "end" then
+        buffer_cursor_end(active_id)
+    end
+
+    if is_buffer then
+        -- buffer commands
+        if keychord.name == "up" then
+            buffer_cursor_move(active_id, -1, 0)
+        elseif keychord.name == "down" then
+            buffer_cursor_move(active_id, 1, 0)
+        elseif keychord.name == "enter" then
+            buffer_write_newline(active_id)
+        elseif keychord.name == "tab" then
+            buffer_write_tab(active_id)
+        elseif keychord.name == "alt-q" then
+            mode_push(prompt_id, "prompt", {
+                active_id=active_id
+            })
+            buffer_set_active_id(prompt_id)
+        elseif keychord_name == "alt-f" then
+            mode_push(prompt_id, "incremental_search", {
+                search_instance=incremental_search_new(active_id),
+                active_id=active_id
+            })
+            buffer_set_active_id(prompt_id)
+        end
+    elseif is_prompt then
+        -- prompt commands
+        local prompt_mode = mode_peek(prompt_id)
+        if prompt_mode.name == "incremental_search" then
+            -- incremental search
+            if not prompt_mode.data.search_instance(keychord) then
+                buffer_set_active_id(prompt_mode.data.active_id)
+                mode_pop(prompt_id)
+            end
+        elseif prompt_mode.name == "prompt" then
+            -- default
+            if keychord.name == "enter" then
+                command_fn = load(buffer_get_line(prompt_id, 0))
+                if not command_fn then
+                    -- TODO status text syntax error
+                end
+                local command_status, command_error = pcall(command_fn)
+                if not command_status then
+                    -- TODO status text runtime error
+                end
+                if not buffer_set_active_id(prompt_mode.data.active_id) then
+flog("failed to set active_id to " .. prompt_mode.data.active_id)
+                end
+                buffer_clear(prompt_id)
+                mode_pop(prompt_id)
+            elseif keychord.name == "up" then
+                -- TODO prompt history
+            elseif keychord.name == "down" then
+                -- TODO prompt history
+            elseif keychord.name == "tab" then
+                -- TODO prompt autocomplete
+            end
+        end
+    end
+
+end)
+
+-- Modes
+local modes = {}
+local mode_init = {
+    { name="default", data={} }
+}
+function mode_push(buffer_id, mode, data)
+    data = data or {}
+    mode_ensure(buffer_id)
+    table.insert(modes[buffer_id], {
+        name=mode,
+        data=data
+    })
+end
+function mode_pop(buffer_id)
+    mode_ensure(buffer_id)
+    return table.remove(modes[buffer_id])
+end
+function mode_peek(buffer_id)
+    mode_ensure(buffer_id)
+    return modes[buffer_id][#modes[buffer_id]]
+end
+function mode_ensure(buffer_id)
+    if not modes[buffer_id] then
+        modes[buffer_id] = mode_init
+    end
+end
+
+-- Feature functions
+function incremental_search_new(buffer_id)
+    local last_search_term = nil
+    local match_index = nil
+    return function(keychord)
+        local search_term = buffer_get_line(buffer_id, 0)
+        local line, offset, buffer_offset = buffer_cursor_get(buffer_id)
+        local current_match = nil
+        if search_term ~= "" and search_term ~= last_search_term then
+            match_index = nil
+            last_search_term = search_term
+            matches = buffer_find_all(buffer_id, search_term)
+            -- TODO highlight all matches
+            -- TODO set match_index to match closest to buffer_offset
+        elseif keychord.name == "up" then
+            -- TODO try to increment match_index
+        elseif keychord.name == "down" then
+            -- TODO try to decrement match_index
+        elseif keychord.name == "enter" then
+            return false -- stop
+        end
+        if current_match then
+            buffer_cursor_set(buffer_id, current_match[1])
+        end
+        -- TODO label "match i/n"
+        return true -- keep going
+    end
+end
+
+-- Aux functions
+function is_ascii(str)
+
+end
+
+-- Logging
+local fdebug = io.open("/tmp/macerc.log", "a")
+function flog(str)
+    fdebug:write(str .. "\n")
+end

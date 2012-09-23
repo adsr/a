@@ -15,14 +15,15 @@ control_t* multi_buffer_view;
 control_t* status_bar;
 control_t* prompt_bar;
 control_t* active;
-
-control_buffer_view_list_t* buffer_views;
+control_t* buffer_view_head;
+control_t* buffer_view_tail;
 
 int control_init() {
 
     ncurses_ensure_init();
 
-    buffer_views = (control_buffer_view_list_t*)calloc(1, sizeof(control_buffer_view_list_t));
+    buffer_view_head = NULL;
+    buffer_view_tail = NULL;
 
     title_bar = control_new();
     title_bar->window_attrs = A_REVERSE;
@@ -30,7 +31,7 @@ int control_init() {
     status_bar = control_new();
     status_bar->window_attrs = A_REVERSE;
 
-    prompt_bar = control_new();
+    prompt_bar = control_new_buffer_view();
 
     multi_buffer_view = control_new_multi_buffer_view();
 
@@ -93,7 +94,9 @@ control_t* control_new_multi_buffer_view_node() {
 }
 
 control_t* control_new_buffer_view() {
+    static int buffer_view_id = 1;
     control_t* control = control_new();
+    control_t* tmp;
     control->window_line_num = newwin(1, 1, 1, 1);
     control->window_margin_left = newwin(1, 1, 1, 1);
     control->window_margin_right = newwin(1, 1, 1, 1);
@@ -102,6 +105,15 @@ control_t* control_new_buffer_view() {
     control->resize = control_resize_buffer_view;
     control->render = control_render_buffer_view;
     control->is_first_render = TRUE;
+    control->buffer_view_id = buffer_view_id;
+    buffer_view_id += 1;
+    if (!buffer_view_head) {
+        buffer_view_head = control;
+        buffer_view_tail = control;
+    } else {
+        buffer_view_tail->next_buffer_view = control;
+        buffer_view_tail = control;
+    }
     return control;
 }
 
@@ -325,12 +337,17 @@ int control_resize() {
     return 0;
 }
 
-control_t* control_get_active() {
-    return active;
+control_t* control_get_active_buffer_view() {
+    if (active && active->buffer) {
+        return active;
+    }
+    return control_get_active_buffer_view_from_node(multi_buffer_view->node_active);
 }
 
-control_t* control_get_active_buffer_view() {
-    return control_get_active_buffer_view_from_node(multi_buffer_view->node_active);
+int control_set_active_buffer_view(control_t* bv) {
+fprintf(fdebug, "control_set_active_buffer_view to %d\n", bv->buffer_view_id);
+    active = bv;
+    return 0;
 }
 
 control_t* control_get_active_buffer_view_from_node(control_t* node) {
@@ -339,6 +356,17 @@ control_t* control_get_active_buffer_view_from_node(control_t* node) {
     } else {
         return node->buffer_view;
     }
+}
+
+control_t* control_get_buffer_view_by_id(int id) {
+    control_t* cur = buffer_view_head;
+    while (cur) {
+        if (cur->buffer_view_id == id) {
+            return cur;
+        }
+        cur = cur->next_buffer_view;
+    }
+    return NULL;
 }
 
 int control_set_cursor(control_t* control, int line, int offset, bool set_target_offset) {

@@ -1,6 +1,8 @@
 #ifndef _INPUT_H
 #define _INPUT_H
 
+#define MAX_INPUT_CODE_LEN 32
+
 typedef struct key_trie_node_s {
     int code;
     char keychord[64];
@@ -8,7 +10,14 @@ typedef struct key_trie_node_s {
     struct key_trie_node_s* sibling;
 } key_trie_node_t;
 
-char* input_get_keychord(int(*getch)());
+typedef struct keychord_s {
+    char* name;
+    int* codes;
+    int code_count;
+    char ascii[2];
+} keychord_t;
+
+keychord_t* input_get_keychord(int(*getch)());
 
 void input_init();
 

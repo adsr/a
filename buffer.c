@@ -4,8 +4,10 @@
 
 #include "buffer.h"
 #include "control.h"
+#include "command.h"
 
 extern FILE* fdebug;
+extern lua_State* lua_state;
 
 /**
  * Make a new buffer
@@ -35,7 +37,7 @@ buffer_t* buffer_new() {
  * @param int* new_line cursor line after insert
  * @param int* new_offset cursor offset after insert
  */
-int buffer_insert_str(
+int buffer_splice(
     buffer_t* buffer,
     int line,
     int offset,

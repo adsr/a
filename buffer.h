@@ -29,7 +29,7 @@ typedef struct buffer_listener_s {
     void* next;
 } buffer_listener_t;
 
-int buffer_insert_str(
+int buffer_splice(
     buffer_t* buffer,
     int line,
     int offset,

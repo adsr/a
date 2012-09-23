@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     // Open debug log
     fdebug = fopen("/tmp/mace.log", "a");
 
-    char* keychord;
+    keychord_t* keychord;
     syntax_t* syntax_php;
     control_t* buffer_view;
 
@@ -67,19 +67,19 @@ int main(int argc, char** argv) {
 
         // Get input
         keychord = input_get_keychord(&getch);
-        if (keychord == NULL) {
+        if (keychord->code_count < 1) {
             continue;
         }
-        control_set_status(keychord); // TODO configurable status
+        control_set_status(keychord->name); // TODO configurable status
 
         // Respond to input
-        if (strcmp("resize", keychord) == 0) {
-            control_resize();
+        if (0 == strcmp(keychord->name, "resize")) {
+            control_resize(); // TODO resize doesn't work sometimes
         } else {
-            command_execute_from_keychord(keychord);
+            command_handle_keychord(keychord);
         }
 
-    } while(keychord == NULL || 0 != strcmp(keychord, "q")); // TODO do not exit on 'q'
+    } while(0 != strcmp(keychord->name, "q")); // TODO do not exit on 'q'
 
     // Clean up screen
     clear();

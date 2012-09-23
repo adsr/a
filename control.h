@@ -42,12 +42,9 @@ typedef struct control_s {
     struct control_s* split_node_new;
     int window_line_num_width;
     bool is_first_render;
+    int buffer_view_id;
+    struct control_s* next_buffer_view;
 } control_t;
-
-typedef struct control_buffer_view_list_s {
-    control_t* buffer_view;
-    control_t* next;
-} control_buffer_view_list_t;
 
 int control_init();
 int control_resize();
@@ -59,9 +56,10 @@ control_t* control_new_multi_buffer_view();
 control_t* control_new_multi_buffer_view_node();
 control_t* control_new_buffer_view();
 
-control_t* control_get_active();
 control_t* control_get_active_buffer_view();
+int control_set_active_buffer_view(control_t* control);
 control_t* control_get_active_buffer_view_from_node(control_t* node);
+control_t* control_get_buffer_view_by_id(int id);
 
 int control_set_status(char* status);
 
