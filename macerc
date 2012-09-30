@@ -25,12 +25,13 @@ input_set_hook(function(keychord)
     local active_mode = mode_peek(active_id)
     local is_prompt = active_id == prompt_id
     local is_buffer = not is_prompt
+    local status_str = ""
 
     -- buffer + prompt common commands
     if keychord.ascii ~= "" then
-        buffer_write(active_id, keychord.ascii)
+        buffer_insert(active_id, keychord.ascii)
     elseif keychord.name == "backspace" then
-        buffer_delete_before(active_id);
+        buffer_delete_before(active_id)
     elseif keychord.name == "delete" then
         buffer_delete_after(active_id)
     elseif keychord.name == "left" then
@@ -50,9 +51,25 @@ input_set_hook(function(keychord)
         elseif keychord.name == "down" then
             buffer_cursor_move(active_id, 1, 0)
         elseif keychord.name == "enter" then
-            buffer_write_newline(active_id)
+            buffer_insert_newline(active_id)
         elseif keychord.name == "tab" then
-            buffer_write_tab(active_id)
+            buffer_insert_tab(active_id)
+        elseif keychord.name == "page-up" then
+            buffer_viewport_move(active_id, -1 * buffer_get_view_height(active_id), 0)
+            buffer_cursor_move(active_id, -1 * buffer_get_view_height(active_id), 0)
+        elseif keychord.name == "page-down" then
+            buffer_viewport_move(active_id, buffer_get_view_height(active_id), 0)
+            buffer_cursor_move(active_id, buffer_get_view_height(active_id), 0)
+        elseif keychord.name == "alt-/" then
+            buffer_cursor_set(active_id, buffer_get_line_count(active_id) - 1, 0);
+        elseif keychord.name == "alt-\\" then
+            buffer_cursor_set(active_id, 0, 0);
+        elseif keychord.name == "ctrl-w" then
+            local cline, coffset, boffset = buffer_cursor_get(active_id)
+            mode_push(prompt_id, "find_next", {
+                buffer_offset=boffset,
+                active_id=active_id
+            })
         elseif keychord.name == "alt-q" then
             mode_push(prompt_id, "prompt", {
                 active_id=active_id
@@ -68,28 +85,23 @@ input_set_hook(function(keychord)
     elseif is_prompt then
         -- prompt commands
         local prompt_mode = mode_peek(prompt_id)
-        if prompt_mode.name == "incremental_search" then
-            -- incremental search
-            if not prompt_mode.data.search_instance(keychord) then
-                buffer_set_active_id(prompt_mode.data.active_id)
-                mode_pop(prompt_id)
-            end
-        elseif prompt_mode.name == "prompt" then
-            -- default
+        if prompt_mode.name == "prompt" then
+            -- prompt
             if keychord.name == "enter" then
-                command_fn = load(buffer_get_line(prompt_id, 0))
+                command_fn = load("return " .. buffer_get_line(prompt_id, 0))
                 if not command_fn then
-                    -- TODO status text syntax error
+                    status_str = "Syntax error"
+                else
+                    local command_status, command_error = pcall(command_fn)
+                    if not command_status then
+                        status_str = "Runtime error: " .. command_error
+                    else
+                        status_str = "Return value: " .. tostring(command_error)
+                    end
+                    buffer_set_active_id(prompt_mode.data.active_id)
+                    buffer_clear(prompt_id)
+                    mode_pop(prompt_id)
                 end
-                local command_status, command_error = pcall(command_fn)
-                if not command_status then
-                    -- TODO status text runtime error
-                end
-                if not buffer_set_active_id(prompt_mode.data.active_id) then
-flog("failed to set active_id to " .. prompt_mode.data.active_id)
-                end
-                buffer_clear(prompt_id)
-                mode_pop(prompt_id)
             elseif keychord.name == "up" then
                 -- TODO prompt history
             elseif keychord.name == "down" then
@@ -97,9 +109,26 @@ flog("failed to set active_id to " .. prompt_mode.data.active_id)
             elseif keychord.name == "tab" then
                 -- TODO prompt autocomplete
             end
+        elseif prompt_mode.name == "incremental_search" then
+            -- incremental search
+            if not prompt_mode.data.search_instance(keychord) then
+                buffer_set_active_id(prompt_mode.data.active_id)
+                mode_pop(prompt_id)
+            end
+        elseif prompt_mode.name == "find_next" then
+            if keychord.name == "enter" then
+                local next_offset = buffer_find_next(
+                    prompt_mode.data.active_id,
+                    buffer_get_line(prompt_id, 0),
+                    prompt_mode.data.buffer_offset
+                )
+                if next_offset < 0 then
+                end
+            end
         end
     end
 
+    status_set(status_str)
 end)
 
 -- Modes
@@ -133,6 +162,7 @@ end
 function incremental_search_new(buffer_id)
     local last_search_term = nil
     local match_index = nil
+    local matches = {}
     return function(keychord)
         local search_term = buffer_get_line(buffer_id, 0)
         local line, offset, buffer_offset = buffer_cursor_get(buffer_id)
@@ -153,14 +183,10 @@ function incremental_search_new(buffer_id)
         if current_match then
             buffer_cursor_set(buffer_id, current_match[1])
         end
+        -- TODO set cursor to match_index
         -- TODO label "match i/n"
         return true -- keep going
     end
-end
-
--- Aux functions
-function is_ascii(str)
-
 end
 
 -- Logging

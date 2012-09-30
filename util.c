@@ -4,6 +4,10 @@
 #include <string.h>
 #include <ncurses.h>
 #include <pcre.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <unistd.h>
 
 #include "util.h"
 
@@ -105,9 +109,10 @@ pcre* util_pcre_compile(char* regex, char* error, int* error_offset) {
         error_offset,
         NULL
     );
-
-if (re == NULL) {
-fprintf(fdebug, "re=%x regex=%s error=%s\n", re, regex, error);
-}
     return re;
+}
+
+int util_file_exists(char* path) {
+    struct stat sb;
+    return stat(path, &sb) == 0 && S_ISREG(sb.st_mode);
 }

@@ -13,6 +13,7 @@ typedef struct buffer_s {
     UT_array* line_offsets;
     struct buffer_listener_s* buffer_listener_head;
     void* key;
+    char* filename;
 } buffer_t;
 
 typedef void (*buffer_on_dirty_lines_fn)(
@@ -49,6 +50,7 @@ int buffer_load_from_file(buffer_t* buffer, char* filename);
 
 char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_end, int* line_count);
 char* buffer_get_line(buffer_t* buffer, int line);
+char* buffer_get_range(buffer_t* buffer, int start_offset, int length);
 int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_offset, int* length);
 
 #endif

@@ -35,7 +35,9 @@ int control_init() {
 
     multi_buffer_view = control_new_multi_buffer_view();
 
-    active = control_get_active_buffer_view();
+    control_set_active_buffer_view(
+        control_get_active_buffer_view()
+    );
 
     control_resize();
     waddstr(title_bar->window, "  GNU mace 0.0.1");
@@ -185,7 +187,7 @@ int control_resize_buffer_view(control_t* self, int width, int height, int left,
     mvwin(self->window_line_num, top, left);
 
     wresize(self->window_margin_left, height, 1);
-    mvwin(self->window_margin_left, top, left + 1);
+    mvwin(self->window_margin_left, top, left + self->window_line_num_width);
 
     wresize(self->window_margin_right, height, 1);
     mvwin(self->window_margin_right, top, left + width - 1);
@@ -193,8 +195,7 @@ int control_resize_buffer_view(control_t* self, int width, int height, int left,
     wresize(self->window, height, width - self->window_line_num_width - 1 - 1);
     mvwin(self->window, top, left + self->window_line_num_width + 1);
 
-    self->viewport_line_end = self->viewport_line_start + height - 1;
-    self->viewport_offset_end = self->viewport_offset_start + width - 1;
+    control_set_viewport(self, self->viewport_line_start, self->viewport_offset_start);
 
     return 0;
 }
@@ -228,8 +229,16 @@ int control_buffer_view_render_line(control_t* self, char* line, int line_on_scr
     }
     wclrtoeol(self->window);
 
-    snprintf(line_num_formatted, self->window_line_num_width + 1, "% 4d", line_in_buffer + 1);
+    if (line_in_buffer >= 0) {
+        snprintf(line_num_formatted, self->window_line_num_width + 1, "% 4d", line_in_buffer + 1);
+    } else {
+        snprintf(line_num_formatted, self->window_line_num_width + 1, "% 4s", "~");
+    }
     mvwaddnstr(self->window_line_num, line_on_screen, 0, line_num_formatted, self->window_line_num_width);
+
+    // TODO actually use margin windows
+    mvwaddnstr(self->window_margin_left, line_on_screen, 0, " ", 1);
+    mvwaddnstr(self->window_margin_right, line_on_screen, 0, " ", 1);
 
     return 0;
 }
@@ -260,26 +269,26 @@ void control_on_dirty_lines(buffer_t* buffer, void* listener, int line_start, in
 int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int dirty_line_end, int line_delta) {
 
     char** lines;
+    char* line;
     int line_count;
     int i;
-
-    if (dirty_line_start > self->viewport_line_end
-        || dirty_line_end < self->viewport_line_start
-    ) {
-        return 0;
-    }
 
     if (self->viewport_line_start > dirty_line_start) {
         dirty_line_start = self->viewport_line_start;
     }
-
     if (self->viewport_line_end < dirty_line_end) {
         dirty_line_end = self->viewport_line_end;
     }
 
     lines = buffer_get_lines(self->buffer, dirty_line_start, dirty_line_end, &line_count);
     for (i = 0; i < line_count; i++) {
-        control_buffer_view_render_line(self, *(lines + i), dirty_line_start + i - self->viewport_line_start, dirty_line_start + i);
+        line = *(lines + i);
+        control_buffer_view_render_line(
+            self,
+            line ? line : "",
+            dirty_line_start + i - self->viewport_line_start,
+            line ? dirty_line_start + i : -1
+        );
     }
 
     if (line_delta < 0) {
@@ -288,8 +297,8 @@ int control_buffer_view_dirty_lines(control_t* self, int dirty_line_start, int d
 
     wnoutrefresh(self->window);
     wnoutrefresh(self->window_line_num);
-    //wnoutrefresh(self->window_margin_left);
-    //wnoutrefresh(self->window_margin_right);
+    wnoutrefresh(self->window_margin_left);
+    wnoutrefresh(self->window_margin_right);
 
     return 0;
 }
@@ -319,7 +328,9 @@ int control_resize() {
     int height;
     control_t* active_buffer_view;
 
+    def_prog_mode();
     endwin();
+    reset_prog_mode();
     refresh();
 
     getmaxyx(stdscr, height, width);
@@ -345,7 +356,6 @@ control_t* control_get_active_buffer_view() {
 }
 
 int control_set_active_buffer_view(control_t* bv) {
-fprintf(fdebug, "control_set_active_buffer_view to %d\n", bv->buffer_view_id);
     active = bv;
     return 0;
 }
@@ -360,6 +370,9 @@ control_t* control_get_active_buffer_view_from_node(control_t* node) {
 
 control_t* control_get_buffer_view_by_id(int id) {
     control_t* cur = buffer_view_head;
+    if (id < 0) {
+        return control_get_active_buffer_view();
+    }
     while (cur) {
         if (cur->buffer_view_id == id) {
             return cur;
@@ -367,6 +380,20 @@ control_t* control_get_buffer_view_by_id(int id) {
         cur = cur->next_buffer_view;
     }
     return NULL;
+}
+
+int control_set_viewport(control_t* control, int line, int offset) {
+    if (line < 0) {
+        line = 0;
+    }
+    if (line >= control->buffer->line_count - control->height) {
+        line = control->buffer->line_count - control->height - 1;
+    }
+    control->viewport_line_start = line;
+    control->viewport_line_end = line + control->height - 1;
+    control->viewport_offset_start = offset;
+    control->viewport_offset_end = offset + control->width - 1;
+    return 0;
 }
 
 int control_set_cursor(control_t* control, int line, int offset, bool set_target_offset) {

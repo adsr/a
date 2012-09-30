@@ -64,6 +64,7 @@ control_t* control_get_buffer_view_by_id(int id);
 int control_set_status(char* status);
 
 int control_set_cursor(control_t* control, int line, int offset, bool set_target_offset);
+int control_set_viewport(control_t* control, int line, int offset);
 
 int control_resize_default(control_t* self, int width, int height, int left, int top);
 int control_resize_multi_buffer_view(control_t* self, int width, int height, int left, int top);

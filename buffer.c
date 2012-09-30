@@ -2,12 +2,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ext/bstrlib/bstrlib.h"
+#include "ext/uthash/utarray.h"
+
 #include "buffer.h"
 #include "control.h"
 #include "command.h"
 
 extern FILE* fdebug;
 extern lua_State* lua_state;
+extern control_t* buffer_view_head;
 
 /**
  * Make a new buffer
@@ -322,7 +326,7 @@ char** buffer_get_lines(buffer_t* buffer, int dirty_line_start, int dirty_line_e
     for (line = dirty_line_start; line <= dirty_line_end; line++) {
         *(lines + *line_count) = buffer_get_line(buffer, line);
         if (*(lines + *line_count) == NULL) {
-            break;
+            //break;
         }
         *line_count += 1;
     }
@@ -356,6 +360,19 @@ char* buffer_get_line(buffer_t* buffer, int line) {
 }
 
 /**
+ * Get a range from buffer as a character array
+ *
+ * @param buffer_t* buffer
+ * @param int start_offset
+ * @param int length
+ * @return char* range
+ */
+char* buffer_get_range(buffer_t* buffer, int start_offset, int length) {
+    bstring line_str = bmidstr(buffer->buffer, start_offset, length);
+    return line_str != NULL ? (char*)line_str->data : NULL;
+}
+
+/**
  * Given a line number, return its starting buffer offset and its length
  *
  * @param buffer_t* buffer
@@ -368,7 +385,7 @@ int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_off
     int end_offset; // Inlcusive end offset in buffer->buffer to return
 
     if (line < 0 || line >= buffer->line_count) {
-        return 0;
+        return 1;
     }
 
     *start_offset = buffer_get_buffer_offset(buffer, line, 0);
@@ -393,11 +410,62 @@ int buffer_get_line_offset_and_length(buffer_t* buffer, int line, int* start_off
  * @param char* filename
  */
 int buffer_load_from_file(buffer_t* buffer, char* filename) {
+    control_t* tmp;
     FILE* fp = fopen(filename, "r");
     if (fp == NULL) {
-        return 0;
+        return 1;
     }
     buffer->buffer = bread((bNread)fread, fp);
+    fclose(fp);
+    buffer->filename = strdup(filename);
     buffer_calc_line_offsets(buffer);
+    tmp = buffer_view_head;
+    while (tmp) {
+        if (tmp->buffer == buffer) {
+            tmp->is_first_render = TRUE;
+        }
+        tmp = tmp->next_buffer_view;
+    }
     return 0;
+}
+
+/**
+ * Save buffer to a file
+ *
+ * @param buffer_t* buffer
+ * @param char* filename
+ */
+int buffer_write_to_file(buffer_t* buffer, char* filename) {
+    int retval;
+    size_t bytes;
+    FILE* fp = fopen(filename, "wb");
+    if (fp == NULL) {
+        return 1;
+    }
+    bytes = (size_t)blength(buffer->buffer);
+    if (bytes != fwrite(buffer->buffer->data, 1, bytes, fp)) {
+        retval = 1;
+    } else {
+        buffer->filename = strdup(filename);
+        retval = 0;
+    }
+    fclose(fp);
+    return retval;
+}
+
+/**
+ * Find needle in haystack starting from start_offset
+ *
+ * @param buffer_t* haystack
+ * @param char* needle
+ * @param int start_offset
+ * @return int found offset or -1 if not found
+ */
+int buffer_find_next(buffer_t* haystack, char* needle, int start_offset) {
+    bstring bneedle = bfromcstr(needle);
+    int needle_offset = binstr(haystack->buffer, start_offset, bneedle);
+    if (needle_offset == BSTR_ERR) {
+        return -1;
+    }
+    return needle_offset;
 }
