@@ -70,6 +70,7 @@ input_set_hook(function(keychord)
                 buffer_offset=boffset,
                 active_id=active_id
             })
+            buffer_set_active_id(prompt_id)
         elseif keychord.name == "alt-q" then
             mode_push(prompt_id, "prompt", {
                 active_id=active_id
@@ -122,8 +123,12 @@ input_set_hook(function(keychord)
                     buffer_get_line(prompt_id, 0),
                     prompt_mode.data.buffer_offset
                 )
-                if next_offset < 0 then
+                if next_offset > 0 then
+                    buffer_cursor_set(prompt_mode.data.active_id, next_offset)
                 end
+                buffer_set_active_id(prompt_mode.data.active_id)
+                buffer_clear(prompt_id)
+                mode_pop(prompt_id)
             end
         end
     end
