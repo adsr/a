@@ -5,6 +5,7 @@
 #include "ext/uthash/utarray.h"
 
 #include "control.h"
+#include "highlighter.h"
 
 typedef struct buffer_s {
     bstring buffer;
@@ -13,7 +14,9 @@ typedef struct buffer_s {
     UT_array* line_offsets;
     struct buffer_listener_s* buffer_listener_head;
     void* key;
+    int buffer_id;
     char* filename;
+    struct syntax_rule_single_s* rule_adhoc_head;
 } buffer_t;
 
 typedef void (*buffer_on_dirty_lines_fn)(

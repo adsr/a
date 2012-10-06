@@ -4,6 +4,7 @@
 #include <pcre.h>
 
 #include "ext/uthash/uthash.h"
+#include "ext/uthash/utlist.h"
 
 #include "command.h"
 #include "buffer.h"
@@ -50,6 +51,9 @@ int command_init() {
     COMMAND_REGISTER(commands, command_tmp, syntax_define);
     COMMAND_REGISTER(commands, command_tmp, syntax_add_rule);
     COMMAND_REGISTER(commands, command_tmp, syntax_add_rule_multi);
+    COMMAND_REGISTER(commands, command_tmp, syntax_add_rule_adhoc);
+    COMMAND_REGISTER(commands, command_tmp, syntax_edit_rule_adhoc);
+    COMMAND_REGISTER(commands, command_tmp, syntax_remove_rule_adhoc);
     COMMAND_REGISTER(commands, command_tmp, input_set_hook);
     COMMAND_REGISTER(commands, command_tmp, buffer_get_prompt_id);
     COMMAND_REGISTER(commands, command_tmp, buffer_get_active_id);
@@ -540,6 +544,35 @@ int command_execute_buffer_unsplit(lua_State* L) {
 }
 
 int command_execute_buffer_splice(lua_State* L) {
+
+    int argc;
+    int line;
+    int offset;
+    int buffer_offset;
+    char* str;
+    int chars_to_delete;
+    int new_line = 0;
+    int new_offset = 0;
+    control_t* control = command_get_buffer_view_by_id_at_arg(L, 1);
+    if (!control) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    argc = lua_gettop(L);
+    str = luaL_checkstring(L, 2);
+    chars_to_delete = luaL_checkint(L, 3);
+    if (argc == 4) {
+        buffer_offset = luaL_checkint(L, 4);
+        buffer_get_line_and_offset(control->buffer, buffer_offset, &line, &offset);
+    } else if (argc > 4) {
+        line = luaL_checkint(L, 4);
+        offset = luaL_checkint(L, 5);
+    }
+
+    buffer_splice(control->buffer, line, offset, str, chars_to_delete, &new_line, &new_offset);
+    control_set_cursor(control, new_line, new_offset, TRUE);
+
+    LUA_RETURN_TRUE(L);
 }
 
 int command_execute_buffer_get_length(lua_State* L) {
@@ -623,7 +656,6 @@ int command_execute_syntax_add_rule(lua_State* L) {
         rule = &((*rule)->next);
     }
     *rule = syntax_rule_single_new(regex, util_ncurses_getpair(color_fg, color_bg) | other_attrs);
-    (*rule)->regex_str = strdup(regex);
 
     LUA_RETURN_TRUE(L);
 }
@@ -660,6 +692,98 @@ int command_execute_syntax_add_rule_multi(lua_State* L) {
     (*rule)->regex_start_str = regex_start;
     (*rule)->regex_end_str = regex_end;
 
+    LUA_RETURN_TRUE(L);
+}
+
+int command_execute_syntax_add_rule_adhoc(lua_State* L) {
+    syntax_rule_single_t* rule;
+    char* regex;
+    char* color_fg;
+    char* color_bg;
+    int other_attrs = 0;
+
+    control_t* buffer_view = command_get_buffer_view_by_id_at_arg(L, 1);
+    if (!buffer_view) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    regex = luaL_checkstring(L, 2);
+    color_fg = luaL_checkstring(L, 3);
+    color_bg = luaL_checkstring(L, 4);
+    other_attrs = luaL_checkint(L, 5);
+
+    rule = syntax_rule_single_new(
+        regex,
+        util_ncurses_getpair(color_fg, color_bg) | other_attrs
+    );
+
+    LL_APPEND(buffer_view->buffer->rule_adhoc_head, rule);
+
+    LUA_RETURN_INT(L, rule->syntax_rule_id);
+}
+
+int command_execute_syntax_edit_rule_adhoc(lua_State* L) {
+    syntax_rule_single_t* rule = NULL;
+    int syntax_rule_id;
+    char* regex;
+    char* color_fg;
+    char* color_bg;
+    int other_attrs = 0;
+
+    control_t* buffer_view = command_get_buffer_view_by_id_at_arg(L, 1);
+    if (!buffer_view) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    syntax_rule_id = luaL_checkint(L, 2);
+    regex = luaL_checkstring(L, 3);
+    color_fg = luaL_checkstring(L, 4);
+    color_bg = luaL_checkstring(L, 5);
+    other_attrs = luaL_checkint(L, 6);
+
+    LL_SEARCH_SCALAR(
+        buffer_view->buffer->rule_adhoc_head,
+        rule,
+        syntax_rule_id,
+        syntax_rule_id
+    );
+
+    if (!rule) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    syntax_rule_single_edit(
+        rule,
+        regex,
+        util_ncurses_getpair(color_fg, color_bg) | other_attrs
+    );
+
+    LUA_RETURN_TRUE(L);
+}
+
+int command_execute_syntax_remove_rule_adhoc(lua_State* L) {
+    syntax_rule_single_t* rule = NULL;
+    int syntax_rule_id;
+
+    control_t* buffer_view = command_get_buffer_view_by_id_at_arg(L, 1);
+    if (!buffer_view) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    syntax_rule_id = luaL_checkint(L, 2);
+
+    LL_SEARCH_SCALAR(
+        buffer_view->buffer->rule_adhoc_head,
+        rule,
+        syntax_rule_id,
+        syntax_rule_id
+    );
+
+    if (!rule) {
+        LUA_RETURN_FALSE(L);
+    }
+
+    LL_DELETE(buffer_view->buffer->rule_adhoc_head, rule);
     LUA_RETURN_TRUE(L);
 }
 

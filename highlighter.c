@@ -11,6 +11,7 @@
 extern FILE* fdebug;
 syntax_t* syntaxes = NULL;
 UT_icd syntax_rule_multi_range_icd = { sizeof(syntax_rule_multi_range_t), NULL, NULL, syntax_rule_multi_range_dtor };
+int syntax_rule_id = 1;
 
 highlighter_t* highlighter_new(buffer_t* buffer, syntax_t* syntax) {
 
@@ -43,6 +44,7 @@ highlighted_substr_t* highlighter_highlight(highlighter_t* self, char* line, int
     int workspace_substrs_count = 0;
     syntax_rule_multi_workspace_t* multi_workspace = NULL;
     syntax_rule_multi_range_t* multi_range = NULL;
+    bool is_adhoc_iter = FALSE;
 
     if (default_attrs == -1) {
          default_attrs = util_ncurses_getpair("default_fg", "default_bg");
@@ -57,7 +59,6 @@ highlighted_substr_t* highlighter_highlight(highlighter_t* self, char* line, int
         return NULL;
     }
 
-    cur_rule = self->syntax->rule_single_head;
     line_length = strlen(line);
 
     // Default highlighting rule
@@ -70,39 +71,49 @@ highlighted_substr_t* highlighter_highlight(highlighter_t* self, char* line, int
     workspace_substrs_count += 1;
 
     // Single-line highlighting rules
-    while (cur_rule != NULL) {
-        start_offset = 0;
-        while (1) {
-            rc = pcre_exec(
-                cur_rule->regex,
-                NULL,
-                line,
-                line_length,
-                start_offset,
-                0,
-                ovector,
-                3
-            );
+    cur_rule = self->syntax->rule_single_head;
+    while (1) {
+        while (cur_rule != NULL) {
+            start_offset = 0;
+            while (1) {
+                rc = pcre_exec(
+                    cur_rule->regex,
+                    NULL,
+                    line,
+                    line_length,
+                    start_offset,
+                    0,
+                    ovector,
+                    3
+                );
 
-            if (rc < 1) {
-                break;
+                if (rc < 1) {
+                    break;
+                }
+
+                temp_workspace_substr = (workspace_substrs + workspace_substrs_count);
+                temp_workspace_substr->attrs = cur_rule->attrs;
+                temp_workspace_substr->substr = line + ovector[0];
+                temp_workspace_substr->start_offset = ovector[0];
+                temp_workspace_substr->end_offset = ovector[1] - 1;
+                temp_workspace_substr->length = ovector[1] - ovector[0];
+                workspace_substrs_count += 1;
+
+                start_offset = ovector[1];
+                if (start_offset >= line_length) {
+                    break;
+                }
+
             }
-
-            temp_workspace_substr = (workspace_substrs + workspace_substrs_count);
-            temp_workspace_substr->attrs = cur_rule->attrs;
-            temp_workspace_substr->substr = line + ovector[0];
-            temp_workspace_substr->start_offset = ovector[0];
-            temp_workspace_substr->end_offset = ovector[1] - 1;
-            temp_workspace_substr->length = ovector[1] - ovector[0];
-            workspace_substrs_count += 1;
-
-            start_offset = ovector[1];
-            if (start_offset >= line_length) {
-                break;
-            }
-
+            cur_rule = cur_rule->next;
         }
-        cur_rule = cur_rule->next;
+        if (is_adhoc_iter) {
+            break;
+        } else {
+            // Second pass will be adhoc rules
+            cur_rule = self->buffer->rule_adhoc_head;
+            is_adhoc_iter = TRUE;
+        }
     }
 
     // Multi-line highlighting rules
@@ -352,10 +363,23 @@ int highlighter_update_lines(syntax_rule_multi_workspace_t* workspace, int line_
 
 syntax_rule_single_t* syntax_rule_single_new(char* regex, int attrs) {
     syntax_rule_single_t* rule = calloc(1, sizeof(syntax_rule_single_t));
-    rule->regex = util_pcre_compile(regex, NULL, NULL);
-    rule->regex_str = regex;
-    rule->attrs = attrs;
+    syntax_rule_single_edit(rule, regex, attrs);
+    rule->syntax_rule_id = syntax_rule_id;
+    syntax_rule_id += 1;
     return rule;
+}
+
+int syntax_rule_single_edit(syntax_rule_single_t* rule, char* regex, int attrs) {
+    if (rule->regex) {
+        pcre_free(rule->regex);
+    }
+    if (rule->regex_str) {
+        free(rule->regex_str);
+    }
+    rule->regex = util_pcre_compile(regex, NULL, NULL);
+    rule->regex_str = strdup(regex);
+    rule->attrs = attrs;
+    return 0;
 }
 
 syntax_rule_multi_t* syntax_rule_multi_new(char* regex_start, char* regex_end, int attrs) {
@@ -363,6 +387,8 @@ syntax_rule_multi_t* syntax_rule_multi_new(char* regex_start, char* regex_end, i
     rule->regex_start = util_pcre_compile(regex_start, NULL, NULL);
     rule->regex_end = util_pcre_compile(regex_end, NULL, NULL);
     rule->attrs = attrs;
+    rule->syntax_rule_id = syntax_rule_id;
+    syntax_rule_id += 1;
     return rule;
 }
 

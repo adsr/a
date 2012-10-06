@@ -86,6 +86,9 @@ int command_execute_buffer_unsplit(lua_State* L);
 int command_execute_syntax_define(lua_State* L);
 int command_execute_syntax_add_rule(lua_State* L);
 int command_execute_syntax_add_rule_multi(lua_State* L);
+int command_execute_syntax_add_rule_adhoc(lua_State* L);
+int command_execute_syntax_edit_rule_adhoc(lua_State* L);
+int command_execute_syntax_remove_rule_adhoc(lua_State* L);
 int command_execute_input_set_hook(lua_State* L);
 int command_execute_status_set(lua_State* L);
 

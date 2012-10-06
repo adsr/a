@@ -19,6 +19,7 @@ extern control_t* buffer_view_head;
  * @return buffer_t* new buffer
  */
 buffer_t* buffer_new() {
+    static int buffer_id = 1;
     int zero = 0;
     buffer_t* buffer = (buffer_t*)calloc(1, sizeof(buffer_t));
     buffer->buffer = bfromcstr("");
@@ -27,6 +28,9 @@ buffer_t* buffer_new() {
     utarray_new(buffer->line_offsets, &ut_int_icd);
     utarray_push_back(buffer->line_offsets, &zero); // 0 -> 0
     buffer->buffer_listener_head = NULL;
+    buffer->buffer_id = buffer_id;
+    buffer->rule_adhoc_head = NULL;
+    buffer_id += 1;
     return buffer;
 }
 
