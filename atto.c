@@ -6,11 +6,8 @@
 #include <locale.h>
 #include <langinfo.h>
 #include <pcre.h>
-#ifdef __CYGWIN__
+#define _XOPEN_SOURCE_EXTENDED 1
 #include <ncursesw/ncurses.h>
-#else
-#include <ncurses.h>
-#endif
 #include "ext/bstrlib/bstrlib.h"
 #include "ext/bstrlib/bstraux.h"
 #include "ext/uthash/uthash.h"
@@ -110,10 +107,12 @@ int main(int argc, char** argv) {
     use_default_colors();
     //curs_set(1);
 
-    wint_t wc;
-    get_wch(&wc);
+    wint_t wc = L'\0';
 
-    addwstr(&wc);
+    cchar_t cc;
+    get_wch(&wc);
+    setcchar(&cc, &wc, 0, 0, NULL);
+    add_wch(&cc);
 
     refresh();
 
@@ -123,7 +122,7 @@ int main(int argc, char** argv) {
     endwin();
 
     char c[MB_LEN_MAX];
-    int len = wctomb(&c, wc);
+    int len = wctomb(c, wc);
     printf("wc=%d len=%d\n", wc, len);
 
     return EXIT_SUCCESS;
