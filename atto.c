@@ -1,129 +1,220 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <limits.h>
-#include <wctype.h>
-#include <locale.h>
-#include <langinfo.h>
+#include <time.h>
+#include <errno.h>
+#include <ncurses.h>
 #include <pcre.h>
-#define _XOPEN_SOURCE_EXTENDED 1
-#include <ncursesw/ncurses.h>
-#include "ext/bstrlib/bstrlib.h"
-#include "ext/bstrlib/bstraux.h"
+#include <lua5.2/lua.h>
+#include <lua5.2/lauxlib.h>
+#include <lua5.2/lualib.h>
 #include "ext/uthash/uthash.h"
 #include "ext/uthash/utarray.h"
 #include "ext/uthash/utlist.h"
 
-typedef struct buffer_s buffer_t;
-typedef struct buffer_view_s buffer_view_t;
-typedef struct buffer_listener_s buffer_listener_t;
-typedef struct syntax_s syntax_t;
-typedef struct highlighter_s highlighter_t;
-typedef struct highlighter_rule_s highlighter_rule_t;
-typedef struct highlighter_rule_workspace_s highlighter_rule_workspace_t;
+#define ATTO_RC_OK 0
+#define ATTO_RC_ERR 1
 
+/**
+ * =============================================================== Interface ==
+ */
+
+/**
+ * Typedefs
+ */
+typedef struct buffer_s buffer_t; // A buffer
+typedef struct bline_s bline_t; // A line in a buffer
+typedef struct bview_s bview_t; // A view of a buffer
+typedef struct mark_s mark_t; // A mark in a bview
+typedef struct srule_s srule_t; // A style rule
+typedef struct sspan_s sspan_t; // A styled span of text
+typedef struct keymap_s keymap_t; // A keymap
+typedef struct kbinding_s kbinding_t; // A binding in a keymap
+typedef struct hook_s hook_t; // A hook
+
+/**
+ * Buffer
+ */
 struct buffer_s {
-    bstring content;
-    size_t byte_count;
-    size_t char_count;
-    size_t line_count;
-    UT_array* line_offsets;
-    buffer_listener_t* buffer_listener_head;
-    int buffer_id;
+    int line_count;
+    bline_t* cur_bline;
+    bline_t* blines;
+    srule_t* srules;
+    mark_t* marks;
+    char* content;
+    int content_is_dirty;
     char* filename;
-    syntax_t* syntax;
-    int is_dirty;
-    int is_read_only;
 };
+buffer_t* buffer_new();
+int buffer_read(buffer_t* self, char* filename);
+int buffer_write(buffer_t* self, char* filename, int is_append);
+int buffer_insert(buffer_t* self, int line, int col, char* str);
+int buffer_delete(buffer_t* self, int line, int col, int num);
+int buffer_search(buffer_t* self, int line, int col, char* regex, int* ret_sl, int* ret_sc, int* ret_so, int* ret_el, int* ret_ec, int* ret_eo);
+char* buffer_get_content(buffer_t* self);
+char* buffer_get_range(buffer_t* self, int sl, int sc, int el, int ec);
+char* buffer_get_line(buffer_t* self, int line);
+int buffer_get_size(buffer_t* self);
+int buffer_destroy(buffer_t* self);
+bline_t* _buffer_get_line_if_valid(buffer_t* self, int line, int col);
+int _buffer_refresh_srules(buffer_t* self, int line, int col);
+int _buffer_refresh_marks(buffer_t* self, int line, int col);
 
-struct buffer_view_s {
-    buffer_t* buffer;
-    int width;
-    int height;
+/**
+ * Buffer line
+ */
+struct bline_s {
+    char* content;
+    int length;
+    sspan_t* spans;
+    int style_hash;
+};
+bline_t* bline_new();
+int bline_calc_style_hash(bline_t* self);
+int bline_destroy(bline_t* self);
+
+/**
+ * Buffer view
+ */
+struct bview_s {
     int left;
     int top;
-    int cursor_line;
-    int cursor_offset;
-    int cursor_offset_target;
-    int viewport_line_start;
-    int viewport_height;
-    int viewport_offset_start;
-    int viewport_width;
-    int split_type;
-    float split_ratio;
-    int split_pos;
-    buffer_view_t* split_child;
-    WINDOW* window_split;
-    WINDOW* window_title;
-    WINDOW* window_buffer;
-    WINDOW* window_line_num;
-    WINDOW* window_margin_left;
-    WINDOW* window_margin_right;
+    int width;
+    int height;
+    WINDOW* win_caption;
+    WINDOW* win_lines;
+    WINDOW* win_margin_left;
+    WINDOW* win_buffer;
+    WINDOW* win_margin_right;
+    WINDOW* win_split_divider;
+    buffer_t* buffer;
+    int viewport_x;
+    int viewport_y;
+    bview_t* split_child;
+    float split_factor;
+    int split_is_vertical;
+    keymap_t* keymap_stack;
+    mark_t* cursor_list;
+    mark_t* cursor;
+    bview_t* next;
+    bview_t* prev;
 };
+bview_t* bview_new();
+int bview_update(bview_t* self);
+int bview_move(bview_t* self, int x, int y);
+int bview_resize(bview_t* self, int w, int h);
+int bview_viewport_move(bview_t* self, int line_delta, int col_delta);
+int bview_viewport_set(bview_t* self, int line, int col);
+bview_t* bview_split(bview_t* self, int is_vertical, float factor);
+int bview_keymap_push(bview_t* self, keymap_t* keymap);
+keymap_t* bview_keymap_pop(bview_t* self);
+int bview_set_active(bview_t* self);
+int bview_destroy(bview_t* self);
 
-typedef void (*buffer_listener_fn)(
-    buffer_t* buffer,
-    void* listener,
-    int line,
-    int column,
-    int char_offset,
-    int byte_offset,
-    int char_delta,
-    int byte_delta,
-    int line_delta,
-    char* deleted,
-    char* inserted
-);
-
-struct buffer_listener_s {
-    void* listener;
-    buffer_listener_fn fn;
-    void* next;
+/**
+ * Mark
+ */
+struct mark_s {
+    buffer_t* buffer;
+    bline_t* line;
+    int col;
+    int offset;
 };
+mark_t* mark_new(buffer_t* buffer);
+int mark_add(bview_t* bview, int line, int col);
+int mark_get(mark_t* self, int* line, int* col);
+int mark_set(mark_t* self, int line, int col);
+int mark_destroy(mark_t* self);
 
-/*
-single, multi, range, adhoc
+/**
+ * Style rule
+ */
+struct srule_s {
+    char* regex_start;
+    char* regex_end;
+    mark_t* start;
+    mark_t* end;
+    int is_bold;
+    int color;
+    srule_t* next;
+};
+srule_t* srule_new();
+srule_t* srule_add_single(char* regex);
+srule_t* srule_add_multi(char* regex_start, char* regex_end);
+srule_t* srule_add_range(mark_t* start, mark_t* end);
+int srule_destroy(srule_t* self);
 
-adhoc: multi-line regex
-range: start char, end char
-single: single-line regex
-multi: start regex, end regex
+/**
+ * Styled span
+ */
+struct sspan_s {
+    int col;
+    int length;
+    int style;
+    sspan_t* next;
+} sspan_t;
 
-*/
+/**
+ * Keymap
+ */
+struct keymap_s {
+    kbinding_t* bindings;
+    int default_ref;
+};
+keymap_t* keymap_new();
+int keymap_bind(keymap_t* self, char* keychord, int ref);
+int keymap_bind_default(keymap_t* self, int ref);
+int keymap_destroy(keymap_t* self);
 
-int main(int argc, char** argv) {
+/**
+ * Keymap binding
+ */
+struct kbinding_s {
+    char* keychord;
+    int ref;
+    UT_hash_handle hh;
+} kbinding_t;
 
-    char* x = setlocale(LC_ALL, "");
-    x = setlocale(LC_ALL, NULL);
-    int utf8_mode = (strcmp(nl_langinfo(CODESET), "UTF-8") == 0);
+/**
+ * Hook
+ */
+struct hook_s {
+    char* name;
+    int ref;
+    hook_t* next;
+    hook_t* prev;
+};
+hook_t* hook_new(char* name, int ref);
+int hook_notify(char* name);
+int hook_destroy(hook_t* self);
 
-    printf("locale=%s utf_mode=%d\n", x, (int)utf8_mode);
+/**
+ * Lua bindings
+ */
+int lapi_init(lua_State* L);
 
-    initscr();
-    raw();
-    noecho();
-    keypad(stdscr, TRUE);
-    start_color();
-    use_default_colors();
-    //curs_set(1);
+#include "buffer.c"
+#include "bline.c"
+#include "bview.c"
+#include "mark.c"
+#include "srule.c"
+#include "sspan.c"
+#include "keymap.c"
+#include "kbinding.c"
+#include "hook.c"
+#include "lapi.c"
 
-    wint_t wc = L'\0';
+int main (int argc, char** argv) {
+    // load lua script
+    // get input
+    // get ref from active bview's keymap
+    // call ref
+    lua_State* L;
 
-    cchar_t cc;
-    get_wch(&wc);
-    setcchar(&cc, &wc, 0, 0, NULL);
-    add_wch(&cc);
+    lapi_init(L);
+    if (luaL_dofile(L, "") != LUA_OK) {
+        
+    }
 
-    refresh();
-
-    getch();
-
-    clear();
-    endwin();
-
-    char c[MB_LEN_MAX];
-    int len = wctomb(c, wc);
-    printf("wc=%d len=%d\n", wc, len);
-
-    return EXIT_SUCCESS;
+    return 0;
 }
