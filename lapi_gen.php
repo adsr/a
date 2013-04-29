@@ -35,6 +35,7 @@ foreach ($all_funcs as $func) {
     echo "    lua_pushcfunction(L, lapi_{$func_name});\n";
     echo "    lua_setglobal(L, \"{$func_name}\");\n";
 }
+echo "    return ATTO_RC_OK;";
 echo "}\n\n";
 
 foreach ($all_funcs as $func) {
@@ -45,8 +46,8 @@ foreach ($all_funcs as $func) {
         $identifier = $func_arg[1];
         $is_ret = preg_match('/^ret_/', $identifier);
         $func_arg[2] = $is_ret;
-        if ($is_ret) {
-            $type = str_replace('*', '', $type);
+        if ($is_ret && substr($type, -1) == '*') {
+            $type = substr($type, 0, -1);
         }
         echo "    {$type} {$identifier};\n";
     }
@@ -64,16 +65,23 @@ foreach ($all_funcs as $func) {
             continue;
         }
         $call_args[] = $identifier;
-        $check_type = c_to_lua_type($type);
-        if ($check_type != 'lightuserdata') {
-            echo "    {$func_arg[1]} = luaL_check{$check_type}(L, {$arg_i});\n";
-        } else {
+        $check_type = c_to_lua_type($type, $identifier);
+        if ($check_type == 'lightuserdata') {
             echo "    luaL_checktype(L, {$arg_i}, LUA_TLIGHTUSERDATA);\n";
             echo "    {$func_arg[1]} = ($type)lua_touserdata(L, {$arg_i});\n";
             echo "    if (!{$func_arg[1]}) {\n";
             echo "        lua_pushinteger(L, 0);\n";
             echo "        return 1;\n";
             echo "    }\n";
+        } else if ($check_type == 'function') {
+            echo "    luaL_checktype(L, {$arg_i}, LUA_TFUNCTION);\n";
+            echo "    lua_pushvalue(L, {$arg_i});\n";
+            echo "    if (({$func_arg[1]} = luaL_ref(L, LUA_REGISTRYINDEX)) == LUA_REFNIL) {\n";
+            echo "        lua_pushinteger(L, 0);\n";
+            echo "        return 1;\n";
+            echo "    }\n";
+        } else {
+            echo "    {$func_arg[1]} = " . ($check_type == 'string' ? '(char*)' : '') . "luaL_check{$check_type}(L, {$arg_i});\n";
         }
         $arg_i += 1;
     }
@@ -92,10 +100,12 @@ $lapi_c = ob_get_clean();
 
 file_put_contents('lapi.c', $lapi_c);
 
-function c_to_lua_type($type) {
+function c_to_lua_type($type, $identifier = '') {
     $type = str_replace('*', '', $type);
     if ($type == 'char') {
         return 'string';
+    } else if ($type == 'int' && preg_match('/^fn_/', $identifier)) {
+        return 'function';
     } else if ($type == 'int') {
         return 'integer';
     } else if ($type == 'float' || $type == 'double') {
