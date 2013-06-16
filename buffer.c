@@ -1,118 +1,491 @@
+#include "atto.h"
+
+/**
+ * Allocate a new buffer
+ */
 buffer_t* buffer_new() {
-    buffer_t* self;
-    self = (buffer_t*)calloc(1, sizeof(buffer_t));
-    DL_APPEND(self->blines, bline_new(self, NULL, -1));
-    self->line_count = 1;
-    self->byte_count = 0;
-    self->content_is_dirty = 1;
-    return self;
+    buffer_t* buffer;
+    buffer = (buffer_t*)calloc(1, sizeof(buffer_t));
+    buffer->line_count = 1;
+    buffer->data = (char*)calloc(ATTO_BUFFER_DATA_ALLOC_INCR, sizeof(char));
+    buffer->data_size = ATTO_BUFFER_DATA_ALLOC_INCR;
+    buffer->line_offsets = (int*)calloc(ATTO_LINE_OFFSET_ALLOC_INCR, sizeof(int));
+    buffer->line_offsets_size = ATTO_LINE_OFFSET_ALLOC_INCR;
+    // TODO check calloc retvals
+    // TODO line_style_hashes, line_spans, styles
+    return buffer;
 }
 
+/**
+ * Read contents of filename into buffer
+ */
 int buffer_read(buffer_t* self, char* filename) {
-    FILE* fp;
-    char* line;
-    ssize_t num_chars;
-    size_t len;
-    bline_t* bline;
-    fp = fopen(filename, "r");
-    if (!fp) {
+    FILE* f;
+    int filesize;
+    char* data;
+
+    // Open file
+    f = fopen(filename, "rb");
+    if (!f) {
+        ATTO_DEBUG_PRINTF("Could not open file for reading: %s\n", filename);
         return ATTO_RC_ERR;
     }
-    buffer_clear(self);
-    line = NULL;
-    len = 0;
-    while ((num_chars = getline(&line, &len, fp)) != -1) {
-        bline = bline_new(self, strdup(line), -1);
-        DL_APPEND(self->blines, bline);
+
+    // Seek to end of file
+    fseek(f, 0, SEEK_END);
+
+    // Ask for position
+    filesize = ftell(f);
+
+    // Go back to beginning of file
+    rewind(f);
+
+    // Allocate buffer data
+    data = (char*)malloc(filesize);
+    if (!data) {
+        ATTO_DEBUG_PRINTF("Could not allocate %d bytes for file %s\n", filesize, filename);
+        fclose(f);
+        return ATTO_RC_ERR;
     }
-    if (line) {
-        free(line);
-    }
-    fclose(fp);
+
+    // Read file into buffer data
+    fread(data, filesize, 1, f);
+
+    // Close file
+    fclose(f);
+
+    // Set buffer data
+    buffer_set(self, data, filesize);
+
+    // Update filename
+    self->filename = strdup(filename);
+
     return ATTO_RC_OK;
 }
 
+/**
+ * Write contents of buffer to filename
+ */
 int buffer_write(buffer_t* self, char* filename, int is_append) {
-    FILE* fp;
-    bline_t* bline;
-    fp = fopen(filename, (is_append ? "a" : "w"));
-    if (!fp) {
+    FILE* f;
+
+    // Open file
+    f = fopen(filename, is_append ? "a" : "w");
+    if (!f) {
+        ATTO_DEBUG_PRINTF("Could not open file for writing: %s\n", filename);
         return ATTO_RC_ERR;
     }
-    DL_FOREACH(self->blines, bline) {
-        fwrite(bline->content, sizeof(char), bline->length, fp);
-        fwrite("\n", sizeof(char), 1, fp);
-    }
-    fclose(fp);
+
+    // Write to file
+    fwrite(self->data, self->byte_count, 1, f);
+
+    // Update filename
+    self->filename = strdup(filename);
+
     return ATTO_RC_OK;
 }
 
+/**
+ * Clear contents of buffer
+ */
 int buffer_clear(buffer_t* self) {
-    bline_t* bline;
-    bline_t* blinetmp;
-    srule_t* srule;
-    srule_t* sruletmp;
+    return buffer_delete(self, 0, self->byte_count);
+}
+
+/**
+ * Set contents of buffer to data
+ */
+int buffer_set(buffer_t* self, char* data, int len) {
+    buffer_clear(self);
+    buffer_insert(self, 0, data, len, NULL, NULL, NULL);
+    return ATTO_RC_OK;
+}
+
+/**
+ * Insert content in a buffer
+ */
+int buffer_insert(buffer_t* self, int offset, char* str, int len, int* ret_offset, int* ret_line, int* ret_col) {
+    int line;
+    int col;
+
+    ATTO_DEBUG_PRINTF("buffer_insert offset=%d str=[%s]\n", offset, str);
+
+    // Sanitize input
+    offset = ATTO_MAX(0, ATTO_MIN(offset, self->byte_count));
+    buffer_get_line_col(self, offset, &line, &col);
+
+    // Nothing to do if len is lt 1
+    if (len < 1) {
+        return ATTO_RC_OK;
+    }
+
+    // Expand buffer data if needed
+    if (self->byte_count + len > self->data_size) {
+        self->data_size = self->byte_count + ATTO_MAX(len, ATTO_BUFFER_DATA_ALLOC_INCR);
+        self->data = (char*)realloc(self->data, sizeof(char) * self->data_size);
+    }
+
+    // Shift data to the right to make space for new content
+    memmove(
+        self->data + offset + len,
+        self->data + offset,
+        self->byte_count - offset
+    );
+
+    // Copy new content to buffer data
+    memcpy(
+        self->data + offset,
+        str,
+        len
+    );
+
+    // Update byte_count
+    self->byte_count += len;
+
+    // Update metadata
+    _buffer_update_metadata(self, offset, line, col, str, len);
+
+    // Return values
+    if (ret_offset) {
+        *ret_offset = offset + len;
+    }
+    if (ret_line || ret_col) {
+        buffer_get_line_col(self, offset + len, ret_line, ret_col);
+    }
+
+    // TODO invoke listeners
+    return ATTO_RC_OK;
+}
+
+/**
+ * Delete content from a buffer
+ */
+int buffer_delete(buffer_t* self, int offset, int len) {
+    int end_offset;
+    int line;
+    int col;
+    char* delta;
+
+    // Nothing to do if byte_count is lt 1
+    if (self->byte_count < 1) {
+        return ATTO_RC_OK;
+    }
+
+    // Sanitize input
+    offset = ATTO_MAX(0, ATTO_MIN(offset, self->byte_count - 1));
+    buffer_get_line_col(self, offset, &line, &col);
+    end_offset = offset + len;
+    end_offset = ATTO_MAX(0, ATTO_MIN(end_offset, self->byte_count));
+    len = end_offset - offset;
+
+    // Nothing to do if len is lt 1
+    if (len < 1) {
+        return ATTO_RC_OK;
+    }
+
+    // Copy deleted content to delta
+    delta = (char*)malloc(sizeof(char) * (len + 1));
+    delta[len] = '\0';
+    memcpy(
+        delta,
+        self->data + offset,
+        len
+    );
+
+    // Shift data to the left
+    memmove(
+        self->data + offset,
+        self->data + end_offset,
+        self->byte_count - end_offset
+    );
+
+    // Update byte_count
+    self->byte_count -= len;
+
+    // Update metadata
+    _buffer_update_metadata(self, offset, line, col, delta, len * -1);
+
+    // TODO invoke listeners
+    return ATTO_RC_OK;
+}
+
+int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len) {
+    int line_offset;
+    int line_len;
+
+    // Calc line offset and length
+    line_offset = buffer_get_offset(self, line, from_col);
+    line_len = line_offset - (buffer_get_offset(self, line + 1, 0) - 2);
+    line_len = ATTO_MAX(line_len, 0);
+
+    // Allocate usebuf if not provided
+    if (!usebuf || usebuf_len < 0) {
+        usebuf = (char*)malloc(sizeof(char) * (line_len + 1));
+        usebuf_len = line_len;
+    }
+
+    // Copy contents to usebuf (not exceeding usebuf_len bytes)
+    memcpy(usebuf, self->data + line_offset, usebuf_len);
+    usebuf[line_len + 1] = '\0';
+
+    // Set return values
+    if (ret_line) {
+        *ret_line = usebuf;
+    }
+    if (ret_len) {
+        *ret_len = line_len;
+    }
+    return ATTO_RC_OK;
+}
+
+int _buffer_get_line_spans(buffer_t* self, int line, char** ret_line, int* ret_len, sspan_t* ret_spans) {
+    // TODO get line spans
+    return ATTO_RC_OK;
+}
+
+/**
+ * Given an offset, return a line and column
+ */
+int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col) {
+    int line;
+
+    // Clamp offset
+    offset = ATTO_MAX(ATTO_MIN(offset, self->byte_count), 0);
+
+    // Handle case for one line buffer
+    if (self->line_count < 2) {
+        if (ret_line) *ret_line = self->line_count - 1;
+        if (ret_col) *ret_col = offset;
+        return ATTO_RC_OK;
+    }
+
+    // Find first line offset greater than offset
+    // TODO can optimize this with a binary search
+    for (line = 0; line < self->line_count; line++) {
+        if (self->line_offsets[line] > offset) {
+            if (ret_line) *ret_line = line - 1;
+            if (ret_col) *ret_col = self->line_offsets[line] - offset;
+            return ATTO_RC_OK;
+        }
+    }
+
+    // If we get here, it must be on the last line
+    if (ret_line) *ret_line = self->line_count - 1;
+    if (ret_col) *ret_col = self->byte_count - offset;
+    return ATTO_RC_OK;
+}
+
+/**
+ * Given a line and column, return an offset
+ */
+int buffer_get_offset(buffer_t* self, int line, int col) {
+    int offset;
+
+    // Sanitize input
+    line = ATTO_MAX(ATTO_MIN(line, self->line_count - 1), 0);
+    col = ATTO_MAX(col, 0);
+
+    // Get offset for line
+    offset = self->line_offsets[line];
+
+    // Make sure col is not past end of line
+    if (line == self->line_count - 1) {
+        col = ATTO_MIN(col, self->byte_count - offset);
+    } else {
+        col = ATTO_MIN(col, self->line_offsets[line + 1] - offset - 1);
+    }
+
+    return offset + col;
+}
+
+/**
+ * Find needle in buffer from offset
+ * Returns offset of match, or -1 if not found
+ */
+int buffer_search(buffer_t* self, char* needle, int offset) {
+    int needle_len;
+    int scan_len;
+    char* match;
+    int match_offset;
+
+    // Clamp offset
+    offset = ATTO_MAX(ATTO_MIN(offset, self->byte_count - 1), 0);
+
+    // Calc scan length
+    scan_len = self->byte_count - offset;
+
+    // Find match
+    needle_len = strlen(needle);
+    if (needle_len == 1) {
+        match = (char*)memchr(self->data + offset, *needle, scan_len);
+    } else {
+        match = (char*)memmem(self->data + offset, scan_len, needle, needle_len);
+    }
+
+    if (!match) {
+        // Not found
+        return -1;
+    }
+
+    // Return match offset
+    return match - self->data;
+}
+
+int buffer_search_reverse(buffer_t* self, char* needle, int offset) {
+    // TODO search reverse
+}
+
+int buffer_add_style(buffer_t* self, srule_t* style) {
+    // TODO add style
+    return ATTO_RC_OK;
+}
+
+int buffer_remove_style(buffer_t* self, srule_t* style) {
+    // TODO remove style
+    return ATTO_RC_OK;
+}
+
+/**
+ * Add a mark
+ */
+mark_t* buffer_add_mark(buffer_t* self, int offset) {
     mark_t* mark;
-    mark_t* marktmp;
-    self->line_count = 0;
-    self->content_is_dirty = 1;
-    if (self->filename) {
-        free(self->filename);
+    int line;
+    int col;
+    buffer_get_line_col(self, offset, &line, &col);
+    offset = buffer_get_offset(self, line, col);
+    mark = (mark_t*)calloc(1, sizeof(mark_t));
+    mark->buffer = self;
+    mark->line = line;
+    mark->col = col;
+    mark->target_col = col;
+    mark->offset = offset;
+    LL_APPEND(self->marks, mark);
+    return mark;
+}
+
+/**
+ * Remove a mark
+ */
+int buffer_remove_mark(buffer_t* self, mark_t* mark) {
+    LL_DELETE(self->marks, mark);
+    free(mark);
+    return ATTO_RC_OK;
+}
+
+/**
+ * Add a buffer listener
+ */
+blistener_t* buffer_add_buffer_listener(buffer_t* self, void* listener, blistener_callback_t fn) {
+    blistener_t* blistener;
+    blistener = (blistener_t*)calloc(1, sizeof(blistener_t));
+    blistener->listener = listener;
+    blistener->fn = fn;
+    LL_APPEND(self->listeners, blistener);
+    return ATTO_RC_OK;
+}
+
+/**
+ * Remove a buffer listener
+ */
+int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener) {
+    LL_DELETE(self->listeners, blistener);
+    free(blistener);
+    return ATTO_RC_OK;
+}
+
+/**
+ * Update various metadata of a buffer after it has been edited
+ */
+int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len) {
+    _buffer_update_line_offsets(self, line);
+    _buffer_update_marks(self, offset, delta_len);
+    _buffer_update_styles(self, line, delta, delta_len);
+    _buffer_notify_listeners(self, line, col, delta, delta_len);
+    return ATTO_RC_OK;
+}
+
+/**
+ * Notify listeners of an edit to the buffer
+ */
+int _buffer_notify_listeners(buffer_t* self, int line, int col, char* delta, int delta_len) {
+    blistener_t* listener;
+    LL_FOREACH(self->listeners, listener) {
+        (listener->fn)(self, listener->listener, line, col, delta, delta_len);
     }
-    if (self->content) {
-        free(self->content);
-    }
-    if (self->blines) {
-        DL_FOREACH_SAFE(self->blines, bline, blinetmp) {
-            bline_destroy(bline);
+    return ATTO_RC_OK;
+}
+
+int _buffer_update_line_offsets(buffer_t* self, int dirty_line) {
+    int line;
+    int offset;
+    char* newline;
+
+    // TODO optimize if we know no newlines were added
+
+    // Sanitize input
+    dirty_line = ATTO_MIN(self->line_count - 1, ATTO_MAX(0, dirty_line));
+
+    // Start offset of dirty_line
+    offset = self->line_offsets[dirty_line];
+
+    // Refresh line offsets of lines after dirty_line
+    while (offset <= self->byte_count) {
+        newline = (char*)memchr(self->data + offset, '\n', self->byte_count - offset);
+        if (!newline) {
+            // No more newlines
+            break;
+        } else {
+            dirty_line += 1;
+            // Expand line_offsets if needed
+            if (dirty_line >= self->line_offsets_size) {
+                self->line_offsets_size += ATTO_LINE_OFFSET_ALLOC_INCR;
+                self->line_offsets = (int*)realloc(
+                    self->line_offsets,
+                    sizeof(int) * self->line_offsets_size
+                );
+            }
+            // Calculate line offset (1 byte after the newline we just found)
+            offset = (newline + 1) - self->data;
+            self->line_offsets[dirty_line] = offset;
         }
     }
-    if (self->srules) {
-        DL_FOREACH_SAFE(self->srules, srule, sruletmp) {
-            srule_destroy(srule);
+
+    // Update line_count
+    self->line_count = dirty_line + 1; // dirty_line is 0-indexed so add 1
+
+    return ATTO_RC_OK;
+}
+
+int _buffer_update_marks(buffer_t* self, int offset, int delta) {
+    mark_t* mark;
+    int line;
+    int col;
+
+    // Update all marks past offset
+    LL_FOREACH(self->marks, mark) {
+        if (mark->offset >= offset) {
+            buffer_get_line_col(self, mark->offset + delta, &line, &col);
+            mark->line = line;
+            mark->col = col;
+            mark->offset = buffer_get_offset(self, line, col);
         }
     }
-    if (self->marks) {
-        DL_FOREACH_SAFE(self->marks, mark, marktmp) {
-            mark_destroy(mark);
-        }
+
+    return ATTO_RC_OK;
+}
+
+int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len) {
+    srule_node_t* node;
+
+    // TODO update styles
+    LL_FOREACH(self->styles, node) {
     }
+
     return ATTO_RC_OK;
 }
 
 int buffer_destroy(buffer_t* self) {
-    buffer_clear(self);
-    free(self);
+    // TODO destroy
     return ATTO_RC_OK;
-}
-
-char* buffer_get_content(buffer_t* self) {
-    bline_t* bline;
-    char* p;
-    if (self->content_is_dirty) {
-        self->content = (char*)realloc(self->content, sizeof(char) * self->byte_count);
-        p = self->content;
-        DL_FOREACH(self->blines, bline) {
-            memcpy(p, bline->content, bline->length);
-            p += bline->length;
-            if (bline->next) {
-                *p = '\n';
-            }
-            p++;
-        }
-        self->content_is_dirty = 0;
-    }
-    return self->content;
-}
-
-int _buffer_update_linenums(buffer_t* self, bline_t* start_line, int start_num) {
-    return ATTO_RC_ERR;
-}
-
-int _buffer_update_srules(buffer_t* self, bline_t* line, int col, int delta, char* strdelta) {
-    return ATTO_RC_ERR;
-}
-
-int _buffer_update_marks(buffer_t* self, bline_t* line, int col, int delta) {
-    return ATTO_RC_ERR;
 }

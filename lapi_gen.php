@@ -1,17 +1,17 @@
 <?php
 
-$lines = explode("\n", file_get_contents('atto.c'));
+$lines = explode("\n", file_get_contents('atto.h'));
 ob_start();
 
 $all_funcs = array();
 
 foreach ($lines as $line) {
     $matches = array();
-    if (preg_match('/^([a-z][a-z_*]+)\s+([a-z_]+)\(([^)]+)\);$/i', $line, $matches)) {
+    if (preg_match('/^([a-z][a-z_*]+)\s+([a-z_]+)\(([^)]*)\);$/i', $line, $matches)) {
         list(, $func_rtype, $func_name, $func_args) = $matches;
-        $func_args = array_map(function($pair) {
+        $func_args = $func_args ? array_map(function($pair) {
             return preg_split('/\s+/', $pair);
-        }, array_map('trim', explode(',', $func_args)));
+        }, array_map('trim', explode(',', $func_args))) : array();
         if (preg_match('/^(_|lapi_)/', $func_name)) {
             continue;
         }
@@ -19,23 +19,24 @@ foreach ($lines as $line) {
     }
 }
 
-echo "int lapi_init(lua_State* L);\n";
+echo "#include \"atto.h\"\n\n";
+echo "int lapi_init(lua_State** L);\n";
 foreach ($all_funcs as $func) {
     list(, $func_rtype, $func_name, $func_args) = $func;
     echo "int lapi_{$func_name}(lua_State* L);\n";
 }
-echo "\n\n";
+echo "\n";
 
-echo "int lapi_init(lua_State* L) {\n";
-echo "    L = luaL_newstate();\n";
-echo "    luaL_openlibs(L);\n";
-echo "    lua_settop(L, 0);\n";
+echo "int lapi_init(lua_State** L) {\n";
+echo "    *L = luaL_newstate();\n";
+echo "    luaL_openlibs(*L);\n";
+echo "    lua_settop(*L, 0);\n";
 foreach ($all_funcs as $func) {
     list(, $func_rtype, $func_name, $func_args) = $func;
-    echo "    lua_pushcfunction(L, lapi_{$func_name});\n";
-    echo "    lua_setglobal(L, \"{$func_name}\");\n";
+    echo "    lua_pushcfunction(*L, lapi_{$func_name});\n";
+    echo "    lua_setglobal(*L, \"{$func_name}\");\n";
 }
-echo "    return ATTO_RC_OK;";
+echo "    return ATTO_RC_OK;\n";
 echo "}\n\n";
 
 foreach ($all_funcs as $func) {
@@ -69,9 +70,12 @@ foreach ($all_funcs as $func) {
         if ($check_type == 'lightuserdata') {
             echo "    luaL_checktype(L, {$arg_i}, LUA_TLIGHTUSERDATA);\n";
             echo "    {$func_arg[1]} = ($type)lua_touserdata(L, {$arg_i});\n";
-            echo "    if (!{$func_arg[1]}) {\n";
-            echo "        lua_pushinteger(L, 0);\n";
-            echo "        return 1;\n";
+        } else if ($check_type == 'lightuserdata_nil') {
+            echo "    if (lua_islightuserdata(L, {$arg_i})) {\n";
+            echo "        luaL_checktype(L, {$arg_i}, LUA_TLIGHTUSERDATA);\n";
+            echo "        {$func_arg[1]} = ($type)lua_touserdata(L, {$arg_i});\n";
+            echo "    } else {\n";
+            echo "        {$func_arg[1]} = NULL;\n";
             echo "    }\n";
         } else if ($check_type == 'function') {
             echo "    luaL_checktype(L, {$arg_i}, LUA_TFUNCTION);\n";
@@ -110,6 +114,8 @@ function c_to_lua_type($type, $identifier = '') {
         return 'integer';
     } else if ($type == 'float' || $type == 'double') {
         return 'number';
+    } else if (preg_match('/^opt_/', $identifier)) {
+        return 'lightuserdata_nil';
     } else {
         return 'lightuserdata';
     }

@@ -1,19 +1,17 @@
-mark_t* mark_new(bview_t* bview, bline_t* line, int col) {
-    return NULL;
+#include "atto.h"
+
+int mark_get(mark_t* self, int* ret_line, int* ret_col) {
+    if (ret_line) {
+        *ret_line = self->line;
+    }
+    if (ret_col) {
+        *ret_col = self->col;
+    }
+    return ATTO_RC_OK;
 }
 
-int mark_get(mark_t* self, bline_t** ret_line, int* ret_col) {
-    return ATTO_RC_ERR;
-}
-
-int mark_set(mark_t* self, bline_t* line, int col) {
-    return ATTO_RC_ERR;
+int mark_set(mark_t* self, int offset) {
 }
 
 int mark_move(mark_t* self, int delta) {
-    return ATTO_RC_ERR;
-}
-
-int mark_destroy(mark_t* self) {
-    return ATTO_RC_ERR;
 }
