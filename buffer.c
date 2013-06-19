@@ -108,7 +108,7 @@ int buffer_insert(buffer_t* self, int offset, char* str, int len, int* ret_offse
     int line;
     int col;
 
-    ATTO_DEBUG_PRINTF("buffer_insert offset=%d str=[%s]\n", offset, str);
+    ATTO_DEBUG_PRINTF("insert data [%s]:%d at offset=%d\n", str, len, offset);
 
     // Sanitize input
     offset = ATTO_MAX(0, ATTO_MIN(offset, self->byte_count));
@@ -215,26 +215,47 @@ int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int us
 
     // Calc line offset and length
     line_offset = buffer_get_offset(self, line, from_col);
-    line_len = line_offset - (buffer_get_offset(self, line + 1, 0) - 2);
-    line_len = ATTO_MAX(line_len, 0);
+    buffer_get_line_col(self, line_offset, &line, &from_col);
+
+    if (line == self->line_count - 1) {
+        line_len = (self->byte_count - self->line_offsets[self->line_count]) - from_col;
+    } else {
+        line_len = (buffer_get_offset(self, line + 1, 0) - 1) - line_offset;
+        line_len = ATTO_MAX(line_len, 0);
+    }
+    return buffer_get_substr(self, line_offset, line_len, usebuf, usebuf_len, ret_line, ret_len);
+
+}
+
+int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int usebuf_len, char** ret_substr, int* ret_len) {
+
+    // Sanitize inputs
+    offset = ATTO_MIN(ATTO_MAX(offset, 0), self->byte_count);
+    if (len < 0) { // Shortcut for returning til end of buffer
+        len = self->byte_count;
+    }
+    len = ATTO_MIN(ATTO_MAX(len, 0), self->byte_count - offset);
 
     // Allocate usebuf if not provided
     if (!usebuf || usebuf_len < 0) {
-        usebuf = (char*)malloc(sizeof(char) * (line_len + 1));
-        usebuf_len = line_len;
+        usebuf = (char*)malloc(sizeof(char) * (len + 1));
+        usebuf_len = len;
+    } else {
+        usebuf_len = ATTO_MIN(len, usebuf_len);
     }
 
     // Copy contents to usebuf (not exceeding usebuf_len bytes)
-    memcpy(usebuf, self->data + line_offset, usebuf_len);
-    usebuf[line_len + 1] = '\0';
+    memcpy(usebuf, self->data + offset, usebuf_len);
+    usebuf[len] = '\0';
 
     // Set return values
-    if (ret_line) {
-        *ret_line = usebuf;
+    if (ret_substr) {
+        *ret_substr = usebuf;
     }
     if (ret_len) {
-        *ret_len = line_len;
+        *ret_len = len;
     }
+
     return ATTO_RC_OK;
 }
 
@@ -248,30 +269,37 @@ int _buffer_get_line_spans(buffer_t* self, int line, char** ret_line, int* ret_l
  */
 int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col) {
     int line;
+    int prev_offset;
 
     // Clamp offset
     offset = ATTO_MAX(ATTO_MIN(offset, self->byte_count), 0);
 
-    // Handle case for one line buffer
-    if (self->line_count < 2) {
-        if (ret_line) *ret_line = self->line_count - 1;
-        if (ret_col) *ret_col = offset;
+    if (offset == 0) {
+        // Handle case for offset zero
+        if (ret_line) *ret_line = 0;
+        if (ret_col) *ret_col = 0;
         return ATTO_RC_OK;
     }
 
     // Find first line offset greater than offset
     // TODO can optimize this with a binary search
+    prev_offset = 0;
     for (line = 0; line < self->line_count; line++) {
-        if (self->line_offsets[line] > offset) {
-            if (ret_line) *ret_line = line - 1;
-            if (ret_col) *ret_col = self->line_offsets[line] - offset;
+        if (self->line_offsets[line] == offset) {
+            if (ret_line) *ret_line = line;
+            if (ret_col) *ret_col = 0;
+            return ATTO_RC_OK;
+        } else if (self->line_offsets[line] > offset) {
+            if (ret_line) *ret_line = ATTO_MAX(line - 1, 0);
+            if (ret_col) *ret_col = ATTO_MAX(offset - prev_offset, 0);
             return ATTO_RC_OK;
         }
+        prev_offset = self->line_offsets[line];
     }
 
     // If we get here, it must be on the last line
-    if (ret_line) *ret_line = self->line_count - 1;
-    if (ret_col) *ret_col = self->byte_count - offset;
+    if (ret_line) *ret_line = ATTO_MAX(self->line_count - 1, 0);
+    if (ret_col) *ret_col = ATTO_MIN(ATTO_MAX(offset - prev_offset, 0), self->byte_count - prev_offset);
     return ATTO_RC_OK;
 }
 
@@ -292,7 +320,7 @@ int buffer_get_offset(buffer_t* self, int line, int col) {
     if (line == self->line_count - 1) {
         col = ATTO_MIN(col, self->byte_count - offset);
     } else {
-        col = ATTO_MIN(col, self->line_offsets[line + 1] - offset - 1);
+        col = ATTO_MIN(col, (self->line_offsets[line + 1] - 1) - offset);
     }
 
     return offset + col;
@@ -398,10 +426,18 @@ int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener) {
  * Update various metadata of a buffer after it has been edited
  */
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len) {
+    char* all;
+
     _buffer_update_line_offsets(self, line);
     _buffer_update_marks(self, offset, delta_len);
     _buffer_update_styles(self, line, delta, delta_len);
     _buffer_notify_listeners(self, line, col, delta, delta_len);
+
+    buffer_get_substr(self, 0, -1, NULL, 0, &all, NULL);
+    ATTO_DEBUG_PRINTF("linec=%d bytec=%d dsize=%d data=[%s]\n", self->line_count, self->byte_count, self->data_size, all);
+    if (all) free(all);
+
+
     return ATTO_RC_OK;
 }
 
@@ -462,13 +498,13 @@ int _buffer_update_marks(buffer_t* self, int offset, int delta) {
     int line;
     int col;
 
-    // Update all marks past offset
+    // Update all marks gte offset
     LL_FOREACH(self->marks, mark) {
         if (mark->offset >= offset) {
-            buffer_get_line_col(self, mark->offset + delta, &line, &col);
-            mark->line = line;
-            mark->col = col;
-            mark->offset = buffer_get_offset(self, line, col);
+            mark_move(mark, delta);
+            ATTO_DEBUG_PRINTF("mark moved %d to %d [%d:%d]\n", delta, mark->offset, mark->line, mark->col);
+        } else {
+            ATTO_DEBUG_PRINTF("%s\n", "good");
         }
     }
 

@@ -11,13 +11,14 @@ bview_t* bview_new(buffer_t* opt_buffer, int is_chromeless) {
         bview->win_buffer = newwin(1, 1, 0, 0);
     } else {
         bview->win_caption = newwin(1, 1, 0, 0);
-        wattrset(bview->win_caption, A_REVERSE); // TODO window styles
+        wbkgdset(bview->win_caption, A_REVERSE); // TODO window styles
         bview->win_lines = newwin(1, 1, 0, 0);
         bview->lines_width = 4; // TODO make configurable
         bview->win_margin_left = newwin(1, 1, 0, 0);
         bview->win_buffer = newwin(1, 1, 0, 0);
         bview->win_margin_right = newwin(1, 1, 0, 0);
     }
+    keypad(bview->win_buffer, TRUE);
     return bview;
 }
 
@@ -40,8 +41,6 @@ int bview_update(bview_t* self) {
     char* line_num_str;
     int line_len;
 
-    ATTO_DEBUG_PRINTF("In bview_update viewport_h=%d line_count=%d\n", self->viewport_h, self->buffer->line_count);
-
     line_str = (char*)calloc(self->viewport_w + 1, sizeof(char));
     line_num_str = (char*)calloc(self->lines_width + 1, sizeof(char));
 
@@ -56,10 +55,12 @@ int bview_update(bview_t* self) {
             // TODO styles
             buffer_get_line(self->buffer, line_num, self->viewport_x, line_str, self->viewport_w, NULL, NULL);
             snprintf(line_num_str, self->lines_width, "%d", line_num + 1); // TODO 0-indexed lines option
-            ATTO_DEBUG_PRINTF("line_num=%s line=[%s]\n", line_num_str, line_str);
+            //ATTO_DEBUG_PRINTF("line_num=%s line=[%s]\n", line_num_str, line_str);
         }
         mvwaddnstr(self->win_lines, view_line, 0, line_num_str, self->lines_width);
+        wclrtoeol(self->win_lines);
         mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
+        wclrtoeol(self->win_buffer);
     }
 
     wnoutrefresh(self->win_lines);
@@ -69,6 +70,13 @@ int bview_update(bview_t* self) {
     free(line_str);
 
     return ATTO_RC_OK;
+}
+
+/**
+ * Show cursor
+ */
+int bview_update_cursor(bview_t* self) {
+    wmove(self->win_buffer, self->cursor->line - self->viewport_y, self->cursor->col - self->viewport_x);
 }
 
 /**
@@ -118,6 +126,7 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
         mvwin(self->win_caption, y, x);
         wresize(self->win_caption, 1, w);
         wnoutrefresh(self->win_caption);
+        ATTO_DEBUG_PRINTF("win_caption y=%d x=%d w=%d h=%d\n", y, x, w, 1);
 
         // win_lines
         mvwin(self->win_lines, y + 1, x);
@@ -132,7 +141,6 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
         // win_buffer
         self->viewport_w = w - (self->lines_width + 2);
         self->viewport_h = h - 1;
-        ATTO_DEBUG_PRINTF("win_buffer w=%d h=%d\n", self->viewport_w, self->viewport_h);
         mvwin(self->win_buffer, y + 1, x + self->lines_width + 1);
         wresize(self->win_buffer, self->viewport_h, self->viewport_w);
         wnoutrefresh(self->win_buffer);

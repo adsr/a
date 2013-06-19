@@ -25,6 +25,11 @@ int main(int argc, char** argv) {
         fdebug = fopen("debug.log", "w");
     }
 
+    // Run tests
+    if (argc == 2 && !strcmp(argv[1], "-T")) {
+        exit(test_run());
+    }
+
     // Init ncurses
     ATTO_DEBUG_PRINTF("%s\n", "Init ncurses");
     _main_init_ncurses(&width, &height);
@@ -69,7 +74,7 @@ int main(int argc, char** argv) {
 void _main_loop(lua_State* L, int width, int height) {
     int do_exit;
     char* keyc;
-    int keys[2];
+    int keys[ATTO_KEYS_LEN];
     int luafn;
 
     // Start loop
@@ -77,12 +82,15 @@ void _main_loop(lua_State* L, int width, int height) {
     do_exit = 0;
     for (;!do_exit;) {
 
+        // Update cursor location
+        bview_update_cursor(g_bview_active);
+
         // Update screen
         doupdate();
 
         // Get input
         _main_get_input(keyc, keys);
-        ATTO_DEBUG_PRINTF("Got input: %s (%d %d)\n", keyc, keys[0], keys[1]);
+        ATTO_DEBUG_PRINTF("Got input: %s (%d %d %d)\n", keyc, keys[0], keys[1], keys[2]);
         if (!strcmp(keyc, "q")) {
             break;
         }
@@ -110,17 +118,46 @@ void _main_loop(lua_State* L, int width, int height) {
 
 void _main_get_input(char* keyc, int* keys) {
     int ch;
-    ch = getch();
-    memset(keys, 0, 2);
+    int i;
+    ch = wgetch(g_bview_active->win_buffer);
+    for (i = 0; i < ATTO_KEYS_LEN; i++) keys[i] = 0;
     keys[0] = ch;
     if (ch == 10 || ch == 13) {
         sprintf(keyc, "%s", "enter");
+    } else if (ch == 8) {
+        sprintf(keyc, "%s", "backspace");
     } else if (ch == 9) {
         sprintf(keyc, "%s", "tab");
     } else if (ch == 27) {
-        ch = getch();
+        ch = wgetch(g_bview_active->win_buffer);
         keys[1] = ch;
-        sprintf(keyc, "M%c", ch);
+        if (ch == '[') {
+            ch = wgetch(g_bview_active->win_buffer);
+            keys[2] = ch;
+            if (ch == 'A') {
+                sprintf(keyc, "%s", "up");
+            } else if (ch == 'B') {
+                sprintf(keyc, "%s", "down");
+            } else if (ch == 'C') {
+                sprintf(keyc, "%s", "right");
+            } else if (ch == 'D') {
+                sprintf(keyc, "%s", "left");
+            } else if (ch == 'H') {
+                sprintf(keyc, "%s", "home");
+            } else if (ch == 'F') {
+                sprintf(keyc, "%s", "end");
+            } else if (ch == 'M') {
+                sprintf(keyc, "%s", "mouse");
+            } else if (ch == 'E') {
+                sprintf(keyc, "%s", "5");
+            } else if (ch == 'G') {
+                sprintf(keyc, "%s", "5");
+            } else {
+                sprintf(keyc, "M[%c", ch);
+            }
+        } else {
+            sprintf(keyc, "M%c", ch);
+        }
     } else if (ch > 0 && ch < 32) {
         sprintf(keyc, "C%c", (ch + 'A' - 1));
     } else if (ch >= 32 && ch <= 126) {
@@ -204,6 +241,12 @@ int _main_invoke_function(int luafn, bview_t* bview, lua_State* L, int width, in
 
     lua_pushlightuserdata(L, bview->buffer);
     lua_setfield(L, -2, "buffer");
+
+    lua_pushinteger(L, bview->buffer->byte_count);
+    lua_setfield(L, -2, "byte_count");
+
+    lua_pushinteger(L, bview->buffer->line_count);
+    lua_setfield(L, -2, "line_count");
 
     lua_pushlightuserdata(L, bview);
     lua_setfield(L, -2, "bview");

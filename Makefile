@@ -1,6 +1,6 @@
-all: clean atto runtest
+all: clean atto
 
-atto: atto.c lapi.c bstrlib.o bstraux.o
+atto: lapi.c bstrlib.o bstraux.o
 	colorgcc -Wall -g -o atto bstrlib.o bstraux.o `ls *.c` -lncurses -llua5.2
 
 bstrlib.o:
@@ -15,5 +15,5 @@ lapi.c:
 clean:
 	rm -f *.o atto lapi.c core
 
-runtest:
-	true
+test: atto
+	./atto -T

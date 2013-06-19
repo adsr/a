@@ -18,6 +18,7 @@
 
 #define ATTO_RC_OK 0
 #define ATTO_RC_ERR 1
+#define ATTO_KEYS_LEN 5
 #define ATTO_KEYC_LEN 16
 #define ATTO_SRULE_TYPE_SINGLE 0
 #define ATTO_SRULE_TYPE_MULTI 1
@@ -75,6 +76,7 @@ int buffer_set(buffer_t* self, char* data, int len);
 int buffer_insert(buffer_t* self, int offset, char* str, int len, int* ret_offset, int* ret_line, int* ret_col);
 int buffer_delete(buffer_t* self, int offset, int len);
 int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len);
+int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int usebuf_len, char** ret_substr, int* ret_len);
 int _buffer_get_line_spans(buffer_t* self, int line, char** ret_line, int* ret_len, sspan_t* ret_spans);
 int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col);
 int buffer_get_offset(buffer_t* self, int line, int col);
@@ -134,6 +136,7 @@ struct bview_s {
 };
 bview_t* bview_new(buffer_t* opt_buffer, int is_chromeless);
 int bview_update(bview_t* self);
+int bview_update_cursor(bview_t* self);
 int bview_resize(bview_t* self, int x, int y, int w, int h);
 int bview_viewport_move(bview_t* self, int line_delta, int col_delta);
 int bview_viewport_set(bview_t* self, int line, int col);
@@ -187,7 +190,9 @@ struct mark_s {
 };
 int mark_get(mark_t* self, int* ret_line, int* ret_col);
 int mark_set(mark_t* self, int offset);
+int mark_set_line_col(mark_t* self, int line, int col);
 int mark_move(mark_t* self, int delta);
+int mark_move_line(mark_t* self, int line_delta);
 
 /**
  * Style rule
@@ -258,6 +263,11 @@ int _main_invoke_function(int luafn, bview_t* bview, lua_State* L, int width, in
 int _main_lapi_debug(lua_State* L);
 
 /**
+ * Test suite
+ */
+int test_run();
+
+/**
  * Globals
  */
 extern bview_t* g_bview_edit;
@@ -276,7 +286,7 @@ extern struct timespec tdebug;
     do { \
         if (ATTO_DEBUG) { \
             clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tdebug); \
-            fprintf(fdebug, "%ld ", tdebug.tv_nsec); \
+            fprintf(fdebug, "%ld [%s] ", tdebug.tv_nsec, __PRETTY_FUNCTION__); \
             fprintf(fdebug, fmt, __VA_ARGS__); \
         } \
     } while (0)
