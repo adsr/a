@@ -1,11 +1,15 @@
 #include "atto.h"
 
+/**
+ * Allocate a new bview
+ */
 bview_t* bview_new(buffer_t* opt_buffer, int is_chromeless) {
     bview_t* bview;
     bview = (bview_t*)calloc(1, sizeof(bview_t));
     bview->buffer = opt_buffer ? opt_buffer : buffer_new();
     bview->cursor = buffer_add_mark(bview->buffer, 0);
     bview->is_chromeless = is_chromeless;
+    bview_viewport_set_scope(bview, 24); // TODO make configurable
     buffer_add_buffer_listener(bview->buffer, (void*)bview, _bview_buffer_callback);
     if (is_chromeless) {
         bview->win_buffer = newwin(1, 1, 0, 0);
@@ -18,8 +22,19 @@ bview_t* bview_new(buffer_t* opt_buffer, int is_chromeless) {
         bview->win_buffer = newwin(1, 1, 0, 0);
         bview->win_margin_right = newwin(1, 1, 0, 0);
     }
-    keypad(bview->win_buffer, TRUE);
+    keypad(bview->win_buffer, TRUE); // This makes wgetch return KEY_* constants
     return bview;
+}
+
+/**
+ * Set viewport scope
+ */
+int bview_viewport_set_scope(bview_t* self, int viewport_scope) {
+    if (viewport_scope == 0) {
+        viewport_scope = 1;
+    }
+    self->viewport_scope = viewport_scope;
+    return ATTO_RC_OK;
 }
 
 /**
@@ -29,6 +44,38 @@ void _bview_buffer_callback(buffer_t* buffer, void* listener, int line, int col,
     bview_t* self;
     self = (bview_t*)listener;
     bview_update(self);
+}
+
+/**
+ * Called when self->cursor is moved
+ */
+int _bview_update_viewport(bview_t* self, int line, int col) {
+    _bview_update_viewport_dimension(self, line, self->viewport_h, &(self->viewport_y));
+//    _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x));
+}
+
+int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y) {
+    int scope_start;
+    int scope_stop;
+
+    if (self->viewport_scope < 0) {
+        scope_start = *viewport_y - self->viewport_scope;
+        scope_stop = (*viewport_y + viewport_h) + self->viewport_scope;
+    } else {
+        scope_start = (*viewport_y + (viewport_h / 2)) - (int)floorf((float)self->viewport_scope * 0.5);
+        scope_stop = (*viewport_y + (viewport_h / 2)) + (int)ceilf((float)self->viewport_scope * 0.5);
+    }
+
+    if (line < scope_start) {
+        *viewport_y -= scope_start - line;
+    } else if (line >= scope_stop) {
+        *viewport_y += (scope_stop + 1) - line;
+    }
+
+    if (*viewport_y < 0) {
+        *viewport_y = 0;
+    }
+    return ATTO_RC_OK;
 }
 
 /**
@@ -44,6 +91,7 @@ int bview_update(bview_t* self) {
     line_str = (char*)calloc(self->viewport_w + 1, sizeof(char));
     line_num_str = (char*)calloc(self->lines_width + 1, sizeof(char));
 
+    // Render each line in viewport
     for (view_line = 0; view_line < self->viewport_h; view_line++) {
         line_num = self->viewport_y + view_line;
         if (line_num < 0 || line_num >= self->buffer->line_count) {
@@ -176,14 +224,19 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
 }
 
 int bview_viewport_move(bview_t* self, int line_delta, int col_delta) {
+    self->viewport_x += col_delta;
+    self->viewport_y += line_delta;
     return ATTO_RC_OK;
 }
 
 int bview_viewport_set(bview_t* self, int line, int col) {
+    self->viewport_x = col;
+    self->viewport_y = line;
     return ATTO_RC_OK;
 }
 
 bview_t* bview_split(bview_t* self, int is_vertical, float factor) {
+    // TODO bview_split
     return NULL;
 }
 
@@ -205,11 +258,12 @@ keymap_t* bview_keymap_pop(bview_t* self) {
 }
 
 int bview_set_active(bview_t* self) {
+    g_bview_active = self;
     return ATTO_RC_OK;
 }
 
 bview_t* bview_get_active() {
-    return NULL;
+    return g_bview_active;
 }
 
 int bview_destroy(bview_t* self) {

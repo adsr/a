@@ -65,7 +65,6 @@ char* test_buffer_simple() {
     ATTO_TEST_ASSERT(!strncmp(line, "a", line_len), "line 2 should contain: a");
 
     buffer_insert(b, 13, "!", 1, NULL, &ret_line, &ret_col);
-
     buffer_get_line(b, 2, 0, line, line_size, &line, &line_len);
     ATTO_TEST_ASSERT(line_len == 2, "line 2 len should now be 2");
     ATTO_TEST_ASSERT(!strncmp(line, "!a", line_len), "line 2 should contain: !a");
@@ -76,6 +75,30 @@ char* test_buffer_simple() {
     ATTO_TEST_ASSERT(line_len == 1, "line 2 len should be 1 again");
 
     free(line);
+    buffer_destroy(b);
+    return NULL;
+}
+
+char* test_mark_simple() {
+    buffer_t* b;
+    mark_t* m;
+    char* line;
+    int line_size;
+
+    line_size = 1024;
+    line = (char*)calloc(line_size + 1, sizeof(char));
+
+    b = buffer_new();
+    m = buffer_add_mark(b, 0);
+
+    ATTO_TEST_ASSERT(b->line_count == 1, "line_count should be 1");
+    ATTO_TEST_ASSERT(b->byte_count == 0, "byte_count should be 0");
+    ATTO_TEST_ASSERT(b->line_offsets[0] == 0, "line 0 should start at offset 0");
+
+    // TODO test_mark_simple
+
+    free(line);
+    buffer_remove_mark(b, m);
     buffer_destroy(b);
     return NULL;
 }
@@ -91,6 +114,7 @@ int test_run() {
     printf("Running all tests\n\n");
 
     ATTO_TEST_RUN(buffer_simple, retval, overall);
+    ATTO_TEST_RUN(mark_simple, retval, overall);
 
     return overall;
 }

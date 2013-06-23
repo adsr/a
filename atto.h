@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <math.h>
 #include <ncurses.h>
 #include <pcre.h>
 #include <lua5.2/lua.h>
@@ -18,7 +19,7 @@
 
 #define ATTO_RC_OK 0
 #define ATTO_RC_ERR 1
-#define ATTO_KEYS_LEN 5
+#define ATTO_KEYS_LEN 2
 #define ATTO_KEYC_LEN 16
 #define ATTO_SRULE_TYPE_SINGLE 0
 #define ATTO_SRULE_TYPE_MULTI 1
@@ -82,6 +83,7 @@ int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col)
 int buffer_get_offset(buffer_t* self, int line, int col);
 int buffer_search(buffer_t* self, char* needle, int offset);
 int buffer_search_reverse(buffer_t* self, char* needle, int offset);
+int _buffer_search(buffer_t* self, char* needle, int offset, int is_reverse);
 int buffer_add_style(buffer_t* self, srule_t* style);
 int buffer_remove_style(buffer_t* self, srule_t* style);
 mark_t* buffer_add_mark(buffer_t* self, int offset);
@@ -124,6 +126,7 @@ struct bview_s {
     int viewport_y;
     int viewport_w;
     int viewport_h;
+    int viewport_scope;
     bview_t* split_child;
     float split_factor;
     int split_is_vertical;
@@ -140,6 +143,9 @@ int bview_update_cursor(bview_t* self);
 int bview_resize(bview_t* self, int x, int y, int w, int h);
 int bview_viewport_move(bview_t* self, int line_delta, int col_delta);
 int bview_viewport_set(bview_t* self, int line, int col);
+int bview_viewport_set_scope(bview_t* self, int viewport_scope);
+int _bview_update_viewport(bview_t* self, int line, int col);
+int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y);
 bview_t* bview_split(bview_t* self, int is_vertical, float factor);
 int bview_keymap_push(bview_t* self, keymap_t* keymap);
 keymap_t* bview_keymap_pop(bview_t* self);
@@ -249,6 +255,11 @@ int _layout_resize(int width, int height);
  * Lua API
  */
 int lapi_init(lua_State** L);
+
+/**
+ * Util functions
+ */
+const char* memrmem(const char* s, size_t slen, const char* t, size_t tlen);
 
 /**
  * Helper functions for main

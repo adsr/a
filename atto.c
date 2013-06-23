@@ -90,7 +90,7 @@ void _main_loop(lua_State* L, int width, int height) {
 
         // Get input
         _main_get_input(keyc, keys);
-        ATTO_DEBUG_PRINTF("Got input: %s (%d %d %d)\n", keyc, keys[0], keys[1], keys[2]);
+        ATTO_DEBUG_PRINTF("Got input: %s (%d %d)\n", keyc, keys[0], keys[1]);
         if (!strcmp(keyc, "q")) {
             break;
         }
@@ -131,33 +131,7 @@ void _main_get_input(char* keyc, int* keys) {
     } else if (ch == 27) {
         ch = wgetch(g_bview_active->win_buffer);
         keys[1] = ch;
-        if (ch == '[') {
-            ch = wgetch(g_bview_active->win_buffer);
-            keys[2] = ch;
-            if (ch == 'A') {
-                sprintf(keyc, "%s", "up");
-            } else if (ch == 'B') {
-                sprintf(keyc, "%s", "down");
-            } else if (ch == 'C') {
-                sprintf(keyc, "%s", "right");
-            } else if (ch == 'D') {
-                sprintf(keyc, "%s", "left");
-            } else if (ch == 'H') {
-                sprintf(keyc, "%s", "home");
-            } else if (ch == 'F') {
-                sprintf(keyc, "%s", "end");
-            } else if (ch == 'M') {
-                sprintf(keyc, "%s", "mouse");
-            } else if (ch == 'E') {
-                sprintf(keyc, "%s", "5");
-            } else if (ch == 'G') {
-                sprintf(keyc, "%s", "5");
-            } else {
-                sprintf(keyc, "M[%c", ch);
-            }
-        } else {
-            sprintf(keyc, "M%c", ch);
-        }
+        sprintf(keyc, "M%c", ch);
     } else if (ch > 0 && ch < 32) {
         sprintf(keyc, "C%c", (ch + 'A' - 1));
     } else if (ch >= 32 && ch <= 126) {
@@ -180,6 +154,10 @@ void _main_get_input(char* keyc, int* keys) {
         sprintf(keyc, "%s", "end");
     } else if (ch == KEY_RESIZE) {
         sprintf(keyc, "%s", "resize");
+    } else if (ch == KEY_NPAGE) {
+        sprintf(keyc, "%s", "pagedown");
+    } else if (ch == KEY_PPAGE) {
+        sprintf(keyc, "%s", "pageup");
     } else {
         sprintf(keyc, "%s", "");
     }
@@ -250,6 +228,12 @@ int _main_invoke_function(int luafn, bview_t* bview, lua_State* L, int width, in
 
     lua_pushlightuserdata(L, bview);
     lua_setfield(L, -2, "bview");
+
+    lua_pushinteger(L, bview->viewport_w);
+    lua_setfield(L, -2, "viewport_w");
+
+    lua_pushinteger(L, bview->viewport_h);
+    lua_setfield(L, -2, "viewport_h");
 
     lua_pushlightuserdata(L, bview->cursor);
     lua_setfield(L, -2, "cursor");

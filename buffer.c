@@ -209,6 +209,9 @@ int buffer_delete(buffer_t* self, int offset, int len) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Get a single line from a buffer
+ */
 int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len) {
     int line_offset;
     int line_len;
@@ -218,11 +221,12 @@ int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int us
     buffer_get_line_col(self, line_offset, &line, &from_col);
 
     if (line == self->line_count - 1) {
-        line_len = (self->byte_count - self->line_offsets[self->line_count]) - from_col;
+        line_len = (self->byte_count - self->line_offsets[self->line_count - 1]) - from_col;
     } else {
         line_len = (buffer_get_offset(self, line + 1, 0) - 1) - line_offset;
         line_len = ATTO_MAX(line_len, 0);
     }
+
     return buffer_get_substr(self, line_offset, line_len, usebuf, usebuf_len, ret_line, ret_len);
 
 }
@@ -259,6 +263,9 @@ int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int use
     return ATTO_RC_OK;
 }
 
+/**
+ * Get styled (colored) spans of text for a line in the buffer
+ */
 int _buffer_get_line_spans(buffer_t* self, int line, char** ret_line, int* ret_len, sspan_t* ret_spans) {
     // TODO get line spans
     return ATTO_RC_OK;
@@ -327,10 +334,26 @@ int buffer_get_offset(buffer_t* self, int line, int col) {
 }
 
 /**
- * Find needle in buffer from offset
- * Returns offset of match, or -1 if not found
+ * Return the offset of the first occurence of needle after offset
+ * Return -1 if not found
  */
 int buffer_search(buffer_t* self, char* needle, int offset) {
+    return _buffer_search(self, needle, offset, 0);
+}
+
+/**
+ * Return the offset of the first occurence of needle before offset
+ * Return -1 if not found
+ */
+int buffer_search_reverse(buffer_t* self, char* needle, int offset) {
+    return _buffer_search(self, needle, offset, 1);
+}
+
+/**
+ * Search for needle in buffer before/after offset
+ * Invoked by buffer_search and buffer_search_reverse
+ */
+int _buffer_search(buffer_t* self, char* needle, int offset, int is_reverse) {
     int needle_len;
     int scan_len;
     char* match;
@@ -340,14 +363,22 @@ int buffer_search(buffer_t* self, char* needle, int offset) {
     offset = ATTO_MAX(ATTO_MIN(offset, self->byte_count - 1), 0);
 
     // Calc scan length
-    scan_len = self->byte_count - offset;
+    scan_len = is_reverse ? offset : (self->byte_count - offset);
 
     // Find match
     needle_len = strlen(needle);
     if (needle_len == 1) {
-        match = (char*)memchr(self->data + offset, *needle, scan_len);
+        if (is_reverse) {
+            match = (char*)memrchr(self->data + offset, *needle, scan_len);
+        } else {
+            match = (char*)memchr(self->data + offset, *needle, scan_len);
+        }
     } else {
-        match = (char*)memmem(self->data + offset, scan_len, needle, needle_len);
+        if (is_reverse) {
+            match = (char*)memrmem(self->data + offset, scan_len, needle, needle_len);
+        } else {
+            match = (char*)memmem(self->data + offset, scan_len, needle, needle_len);
+        }
     }
 
     if (!match) {
@@ -359,15 +390,17 @@ int buffer_search(buffer_t* self, char* needle, int offset) {
     return match - self->data;
 }
 
-int buffer_search_reverse(buffer_t* self, char* needle, int offset) {
-    // TODO search reverse
-}
-
+/**
+ * Add a style
+ */
 int buffer_add_style(buffer_t* self, srule_t* style) {
     // TODO add style
     return ATTO_RC_OK;
 }
 
+/**
+ * Remove a style
+ */
 int buffer_remove_style(buffer_t* self, srule_t* style) {
     // TODO remove style
     return ATTO_RC_OK;
@@ -452,6 +485,12 @@ int _buffer_notify_listeners(buffer_t* self, int line, int col, char* delta, int
     return ATTO_RC_OK;
 }
 
+/**
+ * Update line offsets after dirty_line.
+ *
+ * The offset of the first character in each line is stored in the integer
+ * array line_offsets. This function updates this array.
+ */
 int _buffer_update_line_offsets(buffer_t* self, int dirty_line) {
     int line;
     int offset;
@@ -493,6 +532,9 @@ int _buffer_update_line_offsets(buffer_t* self, int dirty_line) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Update marks after offset by delta
+ */
 int _buffer_update_marks(buffer_t* self, int offset, int delta) {
     mark_t* mark;
     int line;
@@ -511,6 +553,9 @@ int _buffer_update_marks(buffer_t* self, int offset, int delta) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Apply style rules to lines after dirty_line
+ */
 int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len) {
     srule_node_t* node;
 
@@ -521,6 +566,9 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
     return ATTO_RC_OK;
 }
 
+/**
+ * Destroy and free a buffer
+ */
 int buffer_destroy(buffer_t* self) {
     // TODO destroy
     return ATTO_RC_OK;
