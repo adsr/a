@@ -51,29 +51,32 @@ void _bview_buffer_callback(buffer_t* buffer, void* listener, int line, int col,
  */
 int _bview_update_viewport(bview_t* self, int line, int col) {
     _bview_update_viewport_dimension(self, line, self->viewport_h, &(self->viewport_y));
-//    _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x));
+    _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x));
 }
 
 int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y) {
     int scope_start;
     int scope_stop;
+    int scope;
 
     if (self->viewport_scope < 0) {
-        scope_start = *viewport_y - self->viewport_scope;
-        scope_stop = (*viewport_y + viewport_h) + self->viewport_scope;
+        scope = (self->viewport_scope < (self->viewport_h * -1)) ? self->viewport_h * -1 : self->viewport_scope;
+        scope_start = *viewport_y - scope;
+        scope_stop = (*viewport_y + viewport_h) + scope;
     } else {
-        scope_start = (*viewport_y + (viewport_h / 2)) - (int)floorf((float)self->viewport_scope * 0.5);
-        scope_stop = (*viewport_y + (viewport_h / 2)) + (int)ceilf((float)self->viewport_scope * 0.5);
+        scope = (self->viewport_scope > self->viewport_h) ? self->viewport_h : self->viewport_scope;
+        scope_start = (*viewport_y + (viewport_h / 2)) - (int)floorf((float)scope * 0.5);
+        scope_stop = (*viewport_y + (viewport_h / 2)) + (int)ceilf((float)scope * 0.5);
     }
 
     if (line < scope_start) {
         *viewport_y -= scope_start - line;
     } else if (line >= scope_stop) {
-        *viewport_y += (scope_stop + 1) - line;
+        *viewport_y += (line - scope_stop) + 1;
     }
 
     if (*viewport_y < 0) {
-        *viewport_y = 0;
+        *viewport_y = 0; // TODO make negative viewport an option
     }
     return ATTO_RC_OK;
 }
@@ -87,35 +90,51 @@ int bview_update(bview_t* self) {
     int line_num;
     char* line_num_str;
     int line_len;
+    char margin_right;
+    char margin_left;
+    int is_viewport_x_on_cursor_only;
+    int viewport_x;
 
+    is_viewport_x_on_cursor_only = 1; // TODO make configurable
     line_str = (char*)calloc(self->viewport_w + 1, sizeof(char));
     line_num_str = (char*)calloc(self->lines_width + 1, sizeof(char));
 
     // Render each line in viewport
     for (view_line = 0; view_line < self->viewport_h; view_line++) {
         line_num = self->viewport_y + view_line;
+        viewport_x = is_viewport_x_on_cursor_only ? (line_num == self->cursor->line ? self->viewport_x : 0) : self->viewport_x;
         if (line_num < 0 || line_num >= self->buffer->line_count) {
             // No line exists here
             memset(line_str, ' ', self->viewport_w);
             memset(line_num_str, ' ', self->lines_width);
             line_num_str[self->lines_width - 1] = '~';
+            margin_left = ' ';
+            margin_right = ' ';
         } else {
             // TODO styles
-            buffer_get_line(self->buffer, line_num, self->viewport_x, line_str, self->viewport_w, NULL, NULL);
+            buffer_get_line(self->buffer, line_num, viewport_x, line_str, self->viewport_w, NULL, &line_len);
             snprintf(line_num_str, self->lines_width, "%d", line_num + 1); // TODO 0-indexed lines option
-            //ATTO_DEBUG_PRINTF("line_num=%s line=[%s]\n", line_num_str, line_str);
+            margin_left = (viewport_x > 0) ? '^' : ' ';
+            margin_right = (self->viewport_w < line_len) ? '$' : ' ';
         }
         mvwaddnstr(self->win_lines, view_line, 0, line_num_str, self->lines_width);
         wclrtoeol(self->win_lines);
         mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
         wclrtoeol(self->win_buffer);
+        mvwaddch(self->win_margin_left, view_line, 0, margin_left);
+        wclrtoeol(self->win_margin_left);
+        mvwaddch(self->win_margin_right, view_line, 0, margin_right);
+        wclrtoeol(self->win_margin_right);
     }
 
     wnoutrefresh(self->win_lines);
     wnoutrefresh(self->win_buffer);
+    wnoutrefresh(self->win_margin_left);
+    wnoutrefresh(self->win_margin_right);
 
     // TODO render caption, margins
     free(line_str);
+    free(line_num_str);
 
     return ATTO_RC_OK;
 }

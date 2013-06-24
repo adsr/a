@@ -1,7 +1,7 @@
 all: clean atto
 
 atto: lapi.c bstrlib.o bstraux.o
-	colorgcc -Wall -g -o atto bstrlib.o bstraux.o `ls *.c` -lncurses -llua5.2 -lm
+	colorgcc -Wall -g -o atto bstrlib.o bstraux.o `ls *.c` -lncurses -llua5.2 -lm -lpcre
 
 bstrlib.o:
 	gcc -c -o bstrlib.o ext/bstrlib/bstrlib.c

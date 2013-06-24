@@ -210,9 +210,9 @@ int buffer_delete(buffer_t* self, int offset, int len) {
 }
 
 /**
- * Get a single line from a buffer
+ * Get the offset and length of a line
  */
-int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len) {
+int buffer_get_line_offset_len(buffer_t* self, int line, int from_col, int* ret_offset, int* ret_len) {
     int line_offset;
     int line_len;
 
@@ -227,12 +227,25 @@ int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int us
         line_len = ATTO_MAX(line_len, 0);
     }
 
-    return buffer_get_substr(self, line_offset, line_len, usebuf, usebuf_len, ret_line, ret_len);
+    if (ret_offset) {
+        *ret_offset = line_offset;
+    }
+    if (ret_len) {
+        *ret_len = line_len;
+    }
+}
 
+/**
+ * Get a single line from a buffer
+ */
+int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len) {
+    int line_offset;
+    int line_len;
+    buffer_get_line_offset_len(self, line, from_col, &line_offset, &line_len);
+    return buffer_get_substr(self, line_offset, line_len, usebuf, usebuf_len, ret_line, ret_len);
 }
 
 int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int usebuf_len, char** ret_substr, int* ret_len) {
-
     // Sanitize inputs
     offset = ATTO_MIN(ATTO_MAX(offset, 0), self->byte_count);
     if (len < 0) { // Shortcut for returning til end of buffer
@@ -250,7 +263,7 @@ int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int use
 
     // Copy contents to usebuf (not exceeding usebuf_len bytes)
     memcpy(usebuf, self->data + offset, usebuf_len);
-    usebuf[len] = '\0';
+    usebuf[usebuf_len] = '\0';
 
     // Set return values
     if (ret_substr) {
@@ -347,6 +360,36 @@ int buffer_search(buffer_t* self, char* needle, int offset) {
  */
 int buffer_search_reverse(buffer_t* self, char* needle, int offset) {
     return _buffer_search(self, needle, offset, 1);
+}
+
+/**
+ * Return the offset of the first occurence of regex after offset
+ * Return -1 if not found
+ */
+int buffer_regex(buffer_t* self, char* regex, int offset, int length) {
+    pcre* re;
+    int rc;
+    int results[3];
+    const char* err;
+    int erroffset;
+    offset = ATTO_MIN(ATTO_MAX(offset, 0), self->byte_count - 1);
+    if (length < 0) {
+        length = self->byte_count - offset;
+    } else {
+        length = ATTO_MIN(ATTO_MAX(length, 0), self->byte_count - offset);
+    }
+    err = NULL;
+    erroffset = 0;
+    re = pcre_compile(regex, PCRE_NO_AUTO_CAPTURE, &err, &erroffset, NULL);
+    if (!re) {
+        return -1;
+    }
+    rc = pcre_exec(re, NULL, self->data + offset, length, 0, 0, results, 3);
+    pcre_free(re);
+    if (rc < 0) {
+        return -1;
+    }
+    return offset + results[0];
 }
 
 /**
