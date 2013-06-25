@@ -33,6 +33,9 @@ keymap_bind(keymap_default, "enter", function(context)
     local ok, offset, line, col = buffer_insert(context.buffer, context.offset, "\n", 1)
 end)
 
+keymap_bind(keymap_default, [[C\]], function(context) bview_split(context.bview, 1, 0.5) end)
+keymap_bind(keymap_default, [[C_]], function(context) bview_split(context.bview, 0, 0.5) end)
+
 --[[
 keymap_bind(keymap_default, "CR", function(context)
     bview_set_active(bview_prompt)

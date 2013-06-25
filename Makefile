@@ -17,3 +17,6 @@ clean:
 
 test: atto
 	./atto -T
+
+todo:
+	find . -type f -name '*.c' -print0 | xargs -0 grep -i -C3 --color=always todo | less -R

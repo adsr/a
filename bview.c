@@ -136,6 +136,11 @@ int bview_update(bview_t* self) {
     free(line_str);
     free(line_num_str);
 
+    // Also update child
+    if (self->split_child) {
+        bview_update(self->split_child);
+    }
+
     return ATTO_RC_OK;
 }
 
@@ -167,10 +172,10 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
     if (self->split_child) {
         if (self->split_is_vertical) {
             aw = (int)((float)ow * self->split_factor);
-            w = aw - 1;
+            w = aw;
         } else {
             ah = (int)((float)oh * self->split_factor);
-            h = ah - 1;
+            h = ah;
         }
     }
 
@@ -219,16 +224,6 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
     }
 
     if (self->split_child) {
-        // win_split_divider
-        if (self->split_is_vertical) {
-            mvwin(self->win_split_divider, y, x + (aw - 1));
-            wresize(self->win_split_divider, h, 1);
-        } else {
-            mvwin(self->win_split_divider, y + (ah - 1), x);
-            wresize(self->win_split_divider, 1, w);
-        }
-        wnoutrefresh(self->win_split_divider);
-
         // Resize split_child
         bview_resize(
             self->split_child,
@@ -254,11 +249,68 @@ int bview_viewport_set(bview_t* self, int line, int col) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Split self into parent + child
+ */
 bview_t* bview_split(bview_t* self, int is_vertical, float factor) {
-    // TODO bview_split
-    return NULL;
+    bview_t* child;
+    mark_t* cursor;
+    mark_t* cursor_copy;
+    keymap_node_t* keymapnode;
+    keymap_node_t* keymapnode_copy;
+
+    if (self->split_child) {
+        // Already split
+        return ATTO_RC_ERR;
+    }
+
+    // Make new child bview
+    child = bview_new(self->buffer, self->is_chromeless);
+
+    // Set split details on parent
+    self->split_child = child;
+    self->split_factor = factor;
+    self->split_is_vertical = is_vertical;
+
+    // Copy viewport from parent
+    child->viewport_x = self->viewport_x;
+    child->viewport_y = self->viewport_y;
+
+    // Copy cursors from parent
+    mark_set(child->cursor, self->cursor->offset);
+    child->cursor_list = NULL;
+    LL_FOREACH(self->cursor_list, cursor) {
+        cursor_copy = (mark_t*)malloc(sizeof(mark_t));
+        memcpy(cursor_copy, cursor, sizeof(mark_t));
+        LL_APPEND(child->cursor_list, cursor_copy);
+    }
+
+    // Copy keymaps, keymap_tail from parent
+    child->keymaps = NULL;
+    DL_FOREACH(self->keymaps, keymapnode) {
+        keymapnode_copy = (keymap_node_t*)malloc(sizeof(keymap_node_t));
+        memcpy(keymapnode_copy, keymapnode, sizeof(keymap_node_t));
+        DL_APPEND(child->keymaps, keymapnode_copy);
+        if (self->keymap_tail == keymapnode) {
+            child->keymap_tail = keymapnode_copy;
+        }
+    }
+
+    // Resize self
+    bview_resize(self, self->left, self->top, self->width, self->height);
+
+    // Update self
+    bview_update(self);
+
+    // Set active bview to child
+    bview_set_active(child);
+
+    return child;
 }
 
+/**
+ * Push a keymap on bview
+ */
 int bview_keymap_push(bview_t* self, keymap_t* keymap) {
     keymap_node_t* node;
     node = (keymap_node_t*)calloc(1, sizeof(keymap_node_t));

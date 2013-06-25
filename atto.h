@@ -121,7 +121,6 @@ struct bview_s {
     WINDOW* win_margin_left;
     WINDOW* win_buffer;
     WINDOW* win_margin_right;
-    WINDOW* win_split_divider;
     int lines_width;
     buffer_t* buffer;
     int viewport_x;
