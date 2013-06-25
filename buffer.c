@@ -418,7 +418,7 @@ int _buffer_search(buffer_t* self, char* needle, int offset, int is_reverse) {
         }
     } else {
         if (is_reverse) {
-            match = (char*)memrmem(self->data + offset, scan_len, needle, needle_len);
+            match = (char*)util_memrmem(self->data + offset, scan_len, needle, needle_len);
         } else {
             match = (char*)memmem(self->data + offset, scan_len, needle, needle_len);
         }

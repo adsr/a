@@ -9,7 +9,11 @@ hook_t* hook_new(char* name, int fn_handler) {
 }
 
 int _hook_notify(char* name, int num_args) {
+    // TODO
+    return ATTO_RC_OK;
 }
 
 int hook_destroy(hook_t* self) {
+    // TODO
+    return ATTO_RC_OK;
 }

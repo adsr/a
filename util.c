@@ -5,7 +5,7 @@
  *
  * https://github.com/benolee/zile/blob/master/src/memrmem.c
  */
-const char* memrmem(const char* s, size_t slen, const char* t, size_t tlen) {
+const char* util_memrmem(const char* s, size_t slen, const char* t, size_t tlen) {
     size_t i;
     if (slen >= tlen) {
         i = slen - tlen;

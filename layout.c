@@ -1,5 +1,8 @@
 #include "atto.h"
 
+/**
+ * Init bview layout
+ */
 int _layout_init(lua_State* L, buffer_t* buffer) {
     g_bview_edit = bview_new(buffer, 0);
     lua_pushlightuserdata(L, g_bview_edit);
@@ -16,6 +19,9 @@ int _layout_init(lua_State* L, buffer_t* buffer) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Resize bview layout
+ */
 int _layout_resize(int width, int height) {
     bview_t* bview;
     for (bview = g_bview_edit; bview; bview = bview->next) {

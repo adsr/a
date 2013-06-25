@@ -208,6 +208,7 @@ int mark_move_line(mark_t* self, int line_delta);
 struct srule_s {
     char* regex_start;
     char* regex_end;
+    // TODO pcre* regex_*
     mark_t* range_start;
     mark_t* range_end;
     int color;
@@ -261,7 +262,7 @@ int lapi_init(lua_State** L);
 /**
  * Util functions
  */
-const char* memrmem(const char* s, size_t slen, const char* t, size_t tlen);
+const char* util_memrmem(const char* s, size_t slen, const char* t, size_t tlen);
 
 /**
  * Helper functions for main

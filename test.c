@@ -8,6 +8,9 @@
 #define ATTO_TEST_ASSERT(expr, fail_msg) do { \
     if (!(expr)) return fail_msg; } while (0)
 
+/**
+ * Test basic buffer edits
+ */
 char* test_buffer_simple() {
     buffer_t* b;
     int line_size;
@@ -69,8 +72,7 @@ char* test_buffer_simple() {
     ATTO_TEST_ASSERT(line_len == 2, "line 2 len should now be 2");
     ATTO_TEST_ASSERT(!strncmp(line, "!a", line_len), "line 2 should contain: !a");
 
-    buffer_delete(b, 12, 1);
-
+    buffer_delete(b, 13, 1);
     buffer_get_line(b, 2, 0, line, line_size, &line, &line_len);
     ATTO_TEST_ASSERT(line_len == 1, "line 2 len should be 1 again");
 
@@ -79,6 +81,9 @@ char* test_buffer_simple() {
     return NULL;
 }
 
+/**
+ * Test basic mark features
+ */
 char* test_mark_simple() {
     buffer_t* b;
     mark_t* m;

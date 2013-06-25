@@ -35,7 +35,7 @@ int mark_set(mark_t* self, int offset) {
  * Set by line and col
  */
 int mark_set_line_col(mark_t* self, int line, int col) {
-    mark_set(self, buffer_get_offset(self->buffer, line, col));
+    return mark_set(self, buffer_get_offset(self->buffer, line, col));
 }
 
 /**
@@ -51,8 +51,10 @@ int mark_move(mark_t* self, int delta) {
 int mark_move_line(mark_t* self, int line_delta) {
     int offset;
     int target_col;
+    int retval;
     target_col = self->target_col;
     offset = buffer_get_offset(self->buffer, self->line + line_delta, target_col);
-    mark_set(self, offset);
+    retval = mark_set(self, offset);
     self->target_col = target_col; // Restore original target_col
+    return retval;
 }

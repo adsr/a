@@ -1,5 +1,8 @@
 #include "atto.h"
 
+/**
+ * Allocate a new keymap
+ */
 keymap_t* keymap_new(int is_fall_through_allowed) {
     keymap_t* keymap;
     keymap = (keymap_t*)calloc(1, sizeof(keymap_t));
@@ -8,6 +11,9 @@ keymap_t* keymap_new(int is_fall_through_allowed) {
     return keymap;
 }
 
+/**
+ * Bind keyc to fn_handler
+ */
 int keymap_bind(keymap_t* self, char* keyc, int fn_handler) {
     kbinding_t* binding;
     ATTO_DEBUG_PRINTF("Binding %s to %d\n", keyc, fn_handler);
@@ -16,12 +22,18 @@ int keymap_bind(keymap_t* self, char* keyc, int fn_handler) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Set default binding
+ */
 int keymap_bind_default(keymap_t* self, int fn_handler) {
     ATTO_DEBUG_PRINTF("Binding default to %d\n", fn_handler);
     self->default_fn = fn_handler;
     return ATTO_RC_OK;
 }
 
+/**
+ * Free a keymap
+ */
 int keymap_destroy(keymap_t* self) {
     kbinding_t* binding;
     kbinding_t* tmp;
