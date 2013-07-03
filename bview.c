@@ -54,6 +54,9 @@ int _bview_update_viewport(bview_t* self, int line, int col) {
     _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x));
 }
 
+/**
+ * Called by _bview_update_viewport for width and height
+ */
 int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y) {
     int scope_start;
     int scope_stop;
@@ -94,10 +97,14 @@ int bview_update(bview_t* self) {
     char margin_left;
     int is_viewport_x_on_cursor_only;
     int viewport_x;
+    char line_format[] = "%4d";
 
     is_viewport_x_on_cursor_only = 1; // TODO make configurable
     line_str = (char*)calloc(self->viewport_w + 1, sizeof(char));
     line_num_str = (char*)calloc(self->lines_width + 1, sizeof(char));
+
+    // Make line_format
+    //line_format[1] = '0' + ATTO_MAX(ATTO_MIN(self->lines_width, 9), 0);
 
     // Render each line in viewport
     for (view_line = 0; view_line < self->viewport_h; view_line++) {
@@ -113,7 +120,8 @@ int bview_update(bview_t* self) {
         } else {
             // TODO styles
             buffer_get_line(self->buffer, line_num, viewport_x, line_str, self->viewport_w, NULL, &line_len);
-            snprintf(line_num_str, self->lines_width, "%d", line_num + 1); // TODO 0-indexed lines option
+            memset(line_num_str, 'L', self->lines_width);
+            snprintf(line_num_str, self->lines_width + 1, line_format, line_num + 1); // TODO 0-indexed lines option
             margin_left = (viewport_x > 0) ? '^' : ' ';
             margin_right = (self->viewport_w < line_len) ? '$' : ' ';
         }
@@ -127,12 +135,14 @@ int bview_update(bview_t* self) {
         wclrtoeol(self->win_margin_right);
     }
 
+    mvwaddnstr(self->win_caption, 0, 0, "[*] caption", self->width); // TODO caption
+
+    wnoutrefresh(self->win_caption);
     wnoutrefresh(self->win_lines);
     wnoutrefresh(self->win_buffer);
     wnoutrefresh(self->win_margin_left);
     wnoutrefresh(self->win_margin_right);
 
-    // TODO render caption, margins
     free(line_str);
     free(line_num_str);
 
@@ -160,8 +170,6 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
     int aw; // Width of split parent including divider
     int ah; // Height "
 
-    ATTO_DEBUG_PRINTF("In bview_resize with x=%d y=%d ow=%d oh=%d\n", x, y, ow, oh);
-
     // Default these values to the entire space
     w = ow;
     h = oh;
@@ -187,18 +195,16 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
 
     if (self->is_chromeless) {
         // win_buffer takes up all the space in chromeless
-        mvwin(self->win_buffer, y, x);
         wresize(self->win_buffer, h, w);
+        mvwin(self->win_buffer, y, x);
         wnoutrefresh(self->win_buffer);
         self->viewport_w = w;
         self->viewport_h = h;
-        ATTO_DEBUG_PRINTF("chromeless win_buffer w=%d h=%d\n", self->viewport_w, self->viewport_h);
     } else {
         // win_caption
         mvwin(self->win_caption, y, x);
         wresize(self->win_caption, 1, w);
         wnoutrefresh(self->win_caption);
-        ATTO_DEBUG_PRINTF("win_caption y=%d x=%d w=%d h=%d\n", y, x, w, 1);
 
         // win_lines
         mvwin(self->win_lines, y + 1, x);
@@ -237,16 +243,45 @@ int bview_resize(bview_t* self, int x, int y, int ow, int oh) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Move viewport by delta
+ */
 int bview_viewport_move(bview_t* self, int line_delta, int col_delta) {
     self->viewport_x += col_delta;
     self->viewport_y += line_delta;
     return ATTO_RC_OK;
 }
 
+/**
+ * Set viewport
+ */
 int bview_viewport_set(bview_t* self, int line, int col) {
     self->viewport_x = col;
     self->viewport_y = line;
     return ATTO_RC_OK;
+}
+
+/**
+ * Get parent in a split tree
+ * Return self if self has no parent
+ */
+bview_t* bview_get_parent(bview_t* self) {
+    if (self->split_parent) {
+        return self->split_parent;
+    }
+    return self;
+}
+
+/**
+ * Get top level parent in a split tree
+ * Return self if self has no parent
+ */
+bview_t* bview_get_top_parent(bview_t* self) {
+    bview_t* top_parent = self;
+    while (top_parent->split_parent) {
+        top_parent = top_parent->split_parent;
+    }
+    return top_parent;
 }
 
 /**
@@ -266,6 +301,7 @@ bview_t* bview_split(bview_t* self, int is_vertical, float factor) {
 
     // Make new child bview
     child = bview_new(self->buffer, self->is_chromeless);
+    child->split_parent = self;
 
     // Set split details on parent
     self->split_child = child;
@@ -320,23 +356,99 @@ int bview_keymap_push(bview_t* self, keymap_t* keymap) {
     return ATTO_RC_OK;
 }
 
+/**
+ * Pop a keymap
+ */
 keymap_t* bview_keymap_pop(bview_t* self) {
+    keymap_t* popped;
+    keymap_node_t* popped_node;
+    popped = NULL;
+    popped_node = NULL;
     if (self->keymap_tail) {
-        DL_DELETE(self->keymaps, self->keymap_tail);
-        return self->keymap_tail;
+        popped_node = self->keymap_tail;
+        DL_DELETE(self->keymaps, popped_node);
+        popped = popped_node->keymap;
+        self->keymap_tail = popped_node->prev;
+        free(popped_node);
     }
-    return NULL;
+    return popped;
 }
 
+/**
+ * Set active bview
+ */
 int bview_set_active(bview_t* self) {
     g_bview_active = self;
     return ATTO_RC_OK;
 }
 
+/**
+ * Get active bview
+ */
 bview_t* bview_get_active() {
     return g_bview_active;
 }
 
+/**
+ * Destory a bview
+ */
 int bview_destroy(bview_t* self) {
+    /*
+    int left;
+    int top;
+    int width;
+    int height;
+    int is_chromeless;
+    WINDOW* win_caption;
+    WINDOW* win_lines;
+    WINDOW* win_margin_left;
+    WINDOW* win_buffer;
+    WINDOW* win_margin_right;
+    int lines_width;
+    buffer_t* buffer;
+    int viewport_x;
+    int viewport_y;
+    int viewport_w;
+    int viewport_h;
+    int viewport_scope;
+    bview_t* split_child;
+    float split_factor;
+    int split_is_vertical;
+    keymap_node_t* keymaps;
+    keymap_node_t* keymap_tail;
+    mark_t* cursor_list;
+    mark_t* cursor;
+    bview_t* next;
+    bview_t* prev;
+    */
+
+    // TODO
+    self = bview_get_top_parent(self);
+
+    if (self->win_caption) delwin(self->win_caption);
+    if (self->win_lines) delwin(self->win_lines);
+    if (self->win_margin_left) delwin(self->win_margin_left);
+    if (self->win_buffer) delwin(self->win_buffer);
+    if (self->win_margin_right) delwin(self->win_margin_right);
+
     return ATTO_RC_OK;
+}
+
+int bview_set_prompt_label(char* label) {
+    if (g_prompt_label_str) {
+        free(g_prompt_label_str);
+    }
+    g_prompt_label_str = strdup(label);
+    g_prompt_label_len = strlen(g_prompt_label_str);
+    _layout_resize(g_width, g_height);
+    if (g_prompt_label_len > 0) {
+        mvwaddnstr(g_prompt_label, 0, 0, g_prompt_label_str, g_prompt_label_len);
+    }
+    wnoutrefresh(g_prompt_label);
+    doupdate();
+    return ATTO_RC_OK;
+}
+
+char* bview_get_prompt_label() {
+    return g_prompt_label_str;
 }

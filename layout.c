@@ -11,11 +11,16 @@ int _layout_init(lua_State* L, buffer_t* buffer) {
     g_bview_status = bview_new(NULL, 1);
     lua_pushlightuserdata(L, g_bview_status);
     lua_setglobal(L, "bview_status");
+    lua_pushlightuserdata(L, g_bview_status->buffer);
+    lua_setglobal(L, "buffer_status");
 
     g_bview_prompt = bview_new(NULL, 1);
     lua_pushlightuserdata(L, g_bview_prompt);
     lua_setglobal(L, "bview_prompt");
+    lua_pushlightuserdata(L, g_bview_prompt->buffer);
+    lua_setglobal(L, "buffer_prompt");
 
+    g_prompt_label = newwin(1, 1, 0, 0);
     return ATTO_RC_OK;
 }
 
@@ -28,6 +33,11 @@ int _layout_resize(int width, int height) {
         bview_resize(bview, 0, 0, width, height - 2);
     }
     bview_resize(g_bview_status, 0, height - 2, width, 1);
-    bview_resize(g_bview_prompt, 0, height - 1, width, 1);
+
+    mvwin(g_prompt_label, height - 1, 0);
+    wresize(g_prompt_label, 1, ATTO_MAX(g_prompt_label_len, 1));
+    wnoutrefresh(g_prompt_label);
+
+    bview_resize(g_bview_prompt, g_prompt_label_len, height - 1, width - g_prompt_label_len, 1);
     return ATTO_RC_OK;
 }

@@ -79,6 +79,9 @@ int buffer_write(buffer_t* self, char* filename, int is_append) {
     // Write to file
     fwrite(self->data, self->byte_count, 1, f);
 
+    // Close file
+    fclose(f);
+
     // Update filename
     self->filename = strdup(filename);
 
@@ -502,18 +505,10 @@ int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener) {
  * Update various metadata of a buffer after it has been edited
  */
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len) {
-    char* all;
-
     _buffer_update_line_offsets(self, line);
     _buffer_update_marks(self, offset, delta_len);
     _buffer_update_styles(self, line, delta, delta_len);
     _buffer_notify_listeners(self, line, col, delta, delta_len);
-
-    buffer_get_substr(self, 0, -1, NULL, 0, &all, NULL);
-    ATTO_DEBUG_PRINTF("linec=%d bytec=%d dsize=%d data=[%s]\n", self->line_count, self->byte_count, self->data_size, all);
-    if (all) free(all);
-
-
     return ATTO_RC_OK;
 }
 

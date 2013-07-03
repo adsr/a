@@ -128,6 +128,7 @@ struct bview_s {
     int viewport_w;
     int viewport_h;
     int viewport_scope;
+    bview_t* split_parent;
     bview_t* split_child;
     float split_factor;
     int split_is_vertical;
@@ -148,12 +149,16 @@ int bview_viewport_set_scope(bview_t* self, int viewport_scope);
 int _bview_update_viewport(bview_t* self, int line, int col);
 int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y);
 bview_t* bview_split(bview_t* self, int is_vertical, float factor);
+bview_t* bview_get_parent(bview_t* self);
+bview_t* bview_get_top_parent(bview_t* self);
 int bview_keymap_push(bview_t* self, keymap_t* keymap);
 keymap_t* bview_keymap_pop(bview_t* self);
 int bview_set_active(bview_t* self);
 bview_t* bview_get_active();
 int bview_destroy(bview_t* self);
 void _bview_buffer_callback(buffer_t* buffer, void* listener, int line, int col, char* delta, int delta_len);
+int bview_set_prompt_label(char* label);
+char* bview_get_prompt_label();
 
 /**
  * Keymap
@@ -288,6 +293,11 @@ extern bview_t* g_bview_status;
 extern bview_t* g_bview_prompt;
 extern bview_t* g_bview_active;
 extern hook_t* g_hooks;
+extern WINDOW* g_prompt_label;
+extern char* g_prompt_label_str;
+extern int g_prompt_label_len;
+extern int g_width;
+extern int g_height;
 
 /**
  * Debug
@@ -303,5 +313,4 @@ extern struct timespec tdebug;
             fprintf(fdebug, fmt, __VA_ARGS__); \
         } \
     } while (0)
-
 #endif

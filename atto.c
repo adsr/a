@@ -8,6 +8,11 @@ bview_t* g_bview_status = NULL;
 bview_t* g_bview_prompt = NULL;
 bview_t* g_bview_active = NULL;
 hook_t* g_hooks = NULL;
+WINDOW* g_prompt_label = NULL;
+char* g_prompt_label_str = NULL;
+int g_prompt_label_len = 0;
+int g_width = 0;
+int g_height = 0;
 FILE* fdebug = NULL;
 struct timespec tdebug;
 
@@ -16,8 +21,6 @@ struct timespec tdebug;
  */
 int main(int argc, char** argv) {
     lua_State* L;
-    int width;
-    int height;
     buffer_t* buffer;
 
     // Open debug file
@@ -32,7 +35,7 @@ int main(int argc, char** argv) {
 
     // Init ncurses
     ATTO_DEBUG_PRINTF("%s\n", "Init ncurses");
-    _main_init_ncurses(&width, &height);
+    _main_init_ncurses(&g_width, &g_height);
 
     // Init Lua API
     ATTO_DEBUG_PRINTF("%s\n", "Init Lua API");
@@ -48,11 +51,11 @@ int main(int argc, char** argv) {
     buffer = NULL; // TODO parse args
     refresh();
     _layout_init(L, buffer);
-    g_bview_active = g_bview_edit;
+    bview_set_active(g_bview_edit);
 
     // Show screen once
     ATTO_DEBUG_PRINTF("%s\n", "Resize and render layout");
-    _layout_resize(width, height);
+    _layout_resize(g_width, g_height);
     _bview_update_viewport(g_bview_active, 0, 0);
     bview_update(g_bview_active);
     doupdate();
@@ -63,7 +66,7 @@ int main(int argc, char** argv) {
 
     // Enter main loop
     ATTO_DEBUG_PRINTF("%s\n", "Enter main loop");
-    _main_loop(L, width, height);
+    _main_loop(L, g_width, g_height);
 
     // End ncurses
     ATTO_DEBUG_PRINTF("%s\n", "End ncurses");
@@ -159,6 +162,14 @@ void _main_get_input(char* keyc, int* keys) {
         sprintf(keyc, "%s", "pagedown");
     } else if (ch == KEY_PPAGE) {
         sprintf(keyc, "%s", "pageup");
+    } else if (ch == 522) {
+        sprintf(keyc, "%s", "alt-down");
+    } else if (ch == 563) {
+        sprintf(keyc, "%s", "alt-up");
+    } else if (ch == 542) {
+        sprintf(keyc, "%s", "alt-left");
+    } else if (ch == 557) {
+        sprintf(keyc, "%s", "alt-right");
     } else {
         sprintf(keyc, "%s", "");
     }
@@ -199,7 +210,7 @@ int _main_map_input_to_function(bview_t* bview, char* keyc) {
         HASH_FIND_STR(keymap->bindings, keyc, binding);
         if (binding) {
             return binding->fn;
-        } else if (keymap->default_fn) {
+        } else if (keymap->default_fn != LUA_REFNIL) {
             return keymap->default_fn;
         } else if (keymap->is_fall_through_allowed) {
             continue;
