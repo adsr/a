@@ -8,6 +8,9 @@
 #include <time.h>
 #include <errno.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <ncurses.h>
 #include <pcre.h>
 #include <lua5.2/lua.h>
@@ -26,6 +29,7 @@
 #define ATTO_SRULE_TYPE_RANGE 2
 #define ATTO_BUFFER_DATA_ALLOC_INCR 1024
 #define ATTO_LINE_OFFSET_ALLOC_INCR 64
+#define ATTO_SSPAN_RANGE_ALLOC_INCR 10
 #define ATTO_MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define ATTO_MAX(a,b) (((a) > (b)) ? (a) : (b))
 
@@ -33,6 +37,7 @@
  * Typedefs
  */
 typedef struct buffer_s buffer_t; // A buffer of text
+typedef struct bline_s bline_t; // Metadata about a line of text in a buffer
 typedef struct bview_s bview_t; // A view of a buffer
 typedef struct blistener_s blistener_t; // An object that listener to a buffer
 typedef void (*blistener_callback_t) ( // A pointer to a function be invoked on a blistener
@@ -59,10 +64,9 @@ struct buffer_s {
     char* data;
     int data_size;
     char* filename;
-    int* line_offsets;
-    int line_offsets_size;
-    int* line_style_hashes;
-    sspan_t** line_spans;
+    time_t filemtime;
+    bline_t* blines;
+    int blines_size;
     mark_t* marks;
     srule_node_t* styles;
     blistener_t* listeners;
@@ -79,7 +83,7 @@ int buffer_delete(buffer_t* self, int offset, int len);
 int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len);
 int buffer_get_line_offset_len(buffer_t* self, int line, int from_col, int* ret_offset, int* ret_len);
 int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int usebuf_len, char** ret_substr, int* ret_len);
-int _buffer_get_line_spans(buffer_t* self, int line, char** ret_line, int* ret_len, sspan_t* ret_spans);
+int _buffer_get_line_spans(buffer_t* self, int line, sspan_t* ret_spans, int* ret_num_spans);
 int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col);
 int buffer_get_offset(buffer_t* self, int line, int col);
 int buffer_search(buffer_t* self, char* needle, int offset);
@@ -96,7 +100,21 @@ int buffer_destroy(buffer_t* self);
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len);
 int _buffer_update_line_offsets(buffer_t* self, int dirty_line);
 int _buffer_update_marks(buffer_t* self, int offset, int delta);
-int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len);
+int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len, int bail_on_matching_style_hash);
+int _buffer_expand_line_structs(buffer_t* self);
+
+/**
+ * Buffer line
+ */
+struct bline_s {
+    int offset;
+    int length;
+    int style_hash;
+    sspan_t* sspans;
+    int sspans_len;
+    int sspans_size;
+    srule_t* open_rule;
+};
 
 /**
  * Buffer listener
@@ -210,34 +228,34 @@ int mark_move_line(mark_t* self, int line_delta);
  * Style rule
  */
 struct srule_s {
-    char* regex_start;
+    char* regex;
     char* regex_end;
-    // TODO pcre* regex_*
+    pcre* cregex;
+    pcre* cregex_end;
     mark_t* range_start;
     mark_t* range_end;
     int color;
     int bg_color;
-    int is_bold;
+    int other_attrs;
+    int attrs;
     int type; // ATTO_SRULE_TYPE_*
 };
 struct srule_node_s {
     srule_t* rule;
     srule_node_t* next;
 };
-srule_t* srule_new_single(char* regex, int color, int bg_color, int is_bold);
-srule_t* srule_new_multi(char* regex_start, char* regex_end, int color, int bg_color, int is_bold);
-srule_t* srule_new_range(mark_t* start, mark_t* end, int color, int bg_color, int is_bold);
-srule_t* _srule_new(int color, int bg_color, int is_bold);
+srule_t* srule_new_single(char* regex, int color, int bg_color, int other_attrs);
+srule_t* srule_new_multi(char* regex_start, char* regex_end, int color, int bg_color, int other_attrs);
+srule_t* srule_new_range(mark_t* start, mark_t* end, int color, int bg_color, int other_attrs);
+srule_t* _srule_new(int color, int bg_color, int other_attrs);
 int _srule_destroy(srule_t* self);
 
 /**
  * Styled span
  */
 struct sspan_s {
-    int col;
     int length;
-    int style;
-    sspan_t* next;
+    int attrs;
 };
 
 /**
@@ -259,6 +277,11 @@ int _layout_init(lua_State* L, buffer_t* buffer);
 int _layout_resize(int width, int height);
 
 /**
+ * Script
+ */
+int _script_init(lua_State* L);
+
+/**
  * Lua API
  */
 int lapi_init(lua_State** L);
@@ -267,6 +290,8 @@ int lapi_init(lua_State** L);
  * Util functions
  */
 const char* util_memrmem(const char* s, size_t slen, const char* t, size_t tlen);
+pcre* util_compile_regex(char* regex);
+int util_get_ncurses_color_pair(int fg_num, int bg_num);
 
 /**
  * Helper functions for main
@@ -313,4 +338,5 @@ extern struct timespec tdebug;
             fprintf(fdebug, fmt, __VA_ARGS__); \
         } \
     } while (0)
+
 #endif

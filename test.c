@@ -25,7 +25,7 @@ char* test_buffer_simple() {
     b = buffer_new();
     ATTO_TEST_ASSERT(b->line_count == 1, "line_count should be 1");
     ATTO_TEST_ASSERT(b->byte_count == 0, "byte_count should be 0");
-    ATTO_TEST_ASSERT(b->line_offsets[0] == 0, "line 0 should start at offset 0");
+    ATTO_TEST_ASSERT(b->blines[0].offset == 0, "line 0 should start at offset 0");
 
     buffer_get_line(b, 0, 0, line, line_size, &line, &line_len);
     ATTO_TEST_ASSERT(line_len == 0, "line 0 len should be 0");
@@ -33,7 +33,7 @@ char* test_buffer_simple() {
     buffer_insert(b, 0, "Test line 1", 11, NULL, NULL, &ret_col);
     ATTO_TEST_ASSERT(b->line_count == 1, "line_count should still be 1");
     ATTO_TEST_ASSERT(b->byte_count == 11, "byte_count should be 11");
-    ATTO_TEST_ASSERT(b->line_offsets[0] == 0, "line 0 should still start at offset 0");
+    ATTO_TEST_ASSERT(b->blines[0].offset == 0, "line 0 should still start at offset 0");
     ATTO_TEST_ASSERT(ret_col == 11, "ret_col should be 11");
 
     buffer_get_line(b, 0, 0, line, line_size, &line, &line_len);
@@ -43,7 +43,7 @@ char* test_buffer_simple() {
     buffer_insert(b, 11, "\n", 1, NULL, NULL, NULL);
     ATTO_TEST_ASSERT(b->line_count == 2, "line_count should be 2 now");
     ATTO_TEST_ASSERT(b->byte_count == 12, "byte_count should be 12");
-    ATTO_TEST_ASSERT(b->line_offsets[1] == 12, "line 1 should start at offset 12");
+    ATTO_TEST_ASSERT(b->blines[1].offset == 12, "line 1 should start at offset 12");
 
     buffer_get_line(b, 1, 0, line, line_size, &line, &line_len);
     ATTO_TEST_ASSERT(line_len == 0, "line 1 len should be 0");
@@ -51,7 +51,7 @@ char* test_buffer_simple() {
     buffer_insert(b, 11, "\n", 1, NULL, NULL, NULL);
     ATTO_TEST_ASSERT(b->line_count == 3, "line_count should be 3 now");
     ATTO_TEST_ASSERT(b->byte_count == 13, "byte_count should be 13");
-    ATTO_TEST_ASSERT(b->line_offsets[2] == 13, "line 2 should start at offset 13");
+    ATTO_TEST_ASSERT(b->blines[2].offset == 13, "line 2 should start at offset 13");
 
     buffer_get_line(b, 1, 0, line, line_size, &line, &line_len);
     ATTO_TEST_ASSERT(line_len == 0, "line 1 len should still be 0");
@@ -98,7 +98,7 @@ char* test_mark_simple() {
 
     ATTO_TEST_ASSERT(b->line_count == 1, "line_count should be 1");
     ATTO_TEST_ASSERT(b->byte_count == 0, "byte_count should be 0");
-    ATTO_TEST_ASSERT(b->line_offsets[0] == 0, "line 0 should start at offset 0");
+    ATTO_TEST_ASSERT(b->blines[0].offset == 0, "line 0 should start at offset 0");
 
     // TODO test_mark_simple
 

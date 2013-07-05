@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
     refresh();
     _layout_init(L, buffer);
     bview_set_active(g_bview_edit);
+    _script_init(L);
 
     // Show screen once
     ATTO_DEBUG_PRINTF("%s\n", "Resize and render layout");

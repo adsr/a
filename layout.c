@@ -7,6 +7,8 @@ int _layout_init(lua_State* L, buffer_t* buffer) {
     g_bview_edit = bview_new(buffer, 0);
     lua_pushlightuserdata(L, g_bview_edit);
     lua_setglobal(L, "bview_edit");
+    lua_pushlightuserdata(L, g_bview_edit->buffer);
+    lua_setglobal(L, "buffer_edit");
 
     g_bview_status = bview_new(NULL, 1);
     lua_pushlightuserdata(L, g_bview_status);
@@ -21,6 +23,7 @@ int _layout_init(lua_State* L, buffer_t* buffer) {
     lua_setglobal(L, "buffer_prompt");
 
     g_prompt_label = newwin(1, 1, 0, 0);
+
     return ATTO_RC_OK;
 }
 

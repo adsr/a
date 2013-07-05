@@ -3,32 +3,50 @@
 /**
  * Allocate a single-line style
  */
-srule_t* srule_new_single(char* regex, int color, int bg_color, int is_bold) {
+srule_t* srule_new_single(char* regex, int color, int bg_color, int other_attrs) {
     srule_t* srule;
-    srule = _srule_new(color, bg_color, is_bold);
+    pcre* re;
+    re = util_compile_regex(regex);
+    if (!re) {
+        return NULL;
+    }
+    srule = _srule_new(color, bg_color, other_attrs);
     srule->type = ATTO_SRULE_TYPE_SINGLE;
-    srule->regex_start = regex;
+    srule->regex = strdup(regex);
+    srule->cregex = re;
     return srule;
 }
 
 /**
  * Allocate a multi-line style
  */
-srule_t* srule_new_multi(char* regex_start, char* regex_end, int color, int bg_color, int is_bold) {
+srule_t* srule_new_multi(char* regex_start, char* regex_end, int color, int bg_color, int other_attrs) {
     srule_t* srule;
-    srule = _srule_new(color, bg_color, is_bold);
+    pcre* re;
+    pcre* re_end;
+    re = util_compile_regex(regex_start);
+    if (!re) {
+        return NULL;
+    }
+    re_end = util_compile_regex(regex_end);
+    if (!re_end) {
+        return NULL;
+    }
+    srule = _srule_new(color, bg_color, other_attrs);
     srule->type = ATTO_SRULE_TYPE_MULTI;
-    srule->regex_start = regex_start;
-    srule->regex_end = regex_end;
+    srule->regex = strdup(regex_start);
+    srule->regex_end = strdup(regex_end);
+    srule->cregex = re;
+    srule->cregex_end = re_end;
     return srule;
 }
 
 /**
  * Allocate a range style
  */
-srule_t* srule_new_range(mark_t* start, mark_t* end, int color, int bg_color, int is_bold) {
+srule_t* srule_new_range(mark_t* start, mark_t* end, int color, int bg_color, int other_attrs) {
     srule_t* srule;
-    srule = _srule_new(color, bg_color, is_bold);
+    srule = _srule_new(color, bg_color, other_attrs);
     srule->type = ATTO_SRULE_TYPE_RANGE;
     srule->range_start = start;
     srule->range_end = end;
@@ -38,13 +56,14 @@ srule_t* srule_new_range(mark_t* start, mark_t* end, int color, int bg_color, in
 /**
  * Allocate a style
  */
-srule_t* _srule_new(int color, int bg_color, int is_bold) {
+srule_t* _srule_new(int color, int bg_color, int other_attrs) {
     srule_t* srule;
     srule = (srule_t*)calloc(1, sizeof(srule_t));
     // TODO ncurses color pairs
     srule->color = color;
     srule->bg_color = bg_color;
-    srule->is_bold = is_bold;
+    srule->other_attrs = other_attrs;
+    srule->attrs = util_get_ncurses_color_pair(color, bg_color) + other_attrs;
     return srule;
 }
 
@@ -52,7 +71,18 @@ srule_t* _srule_new(int color, int bg_color, int is_bold) {
  * Free a style
  */
 int srule_destroy(srule_t* self) {
-    // TODO pcre_free(self->regex_*)
+    if (self->cregex) {
+        pcre_free(self->cregex);
+    }
+    if (self->cregex_end) {
+        pcre_free(self->cregex_end);
+    }
+    if (self->regex) {
+        free(self->regex);
+    }
+    if (self->regex_end) {
+        free(self->regex_end);
+    }
     free(self);
     return ATTO_RC_OK;
 }

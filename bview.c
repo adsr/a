@@ -97,19 +97,27 @@ int bview_update(bview_t* self) {
     char margin_left;
     int is_viewport_x_on_cursor_only;
     int viewport_x;
-    char line_format[] = "%4d";
+    char line_format[] = "%1d";
+    bline_t* bline;
+    int span_i;
+    int offset;
+    int length;
+    sspan_t* span;
+
+    // TODO determine min display geom and bail if too small
 
     is_viewport_x_on_cursor_only = 1; // TODO make configurable
     line_str = (char*)calloc(self->viewport_w + 1, sizeof(char));
     line_num_str = (char*)calloc(self->lines_width + 1, sizeof(char));
 
     // Make line_format
-    //line_format[1] = '0' + ATTO_MAX(ATTO_MIN(self->lines_width, 9), 0);
+    line_format[1] = '0' + ATTO_MAX(ATTO_MIN(self->lines_width, 9), 0);
 
     // Render each line in viewport
     for (view_line = 0; view_line < self->viewport_h; view_line++) {
         line_num = self->viewport_y + view_line;
         viewport_x = is_viewport_x_on_cursor_only ? (line_num == self->cursor->line ? self->viewport_x : 0) : self->viewport_x;
+        bline = NULL;
         if (line_num < 0 || line_num >= self->buffer->line_count) {
             // No line exists here
             memset(line_str, ' ', self->viewport_w);
@@ -120,15 +128,54 @@ int bview_update(bview_t* self) {
         } else {
             // TODO styles
             buffer_get_line(self->buffer, line_num, viewport_x, line_str, self->viewport_w, NULL, &line_len);
-            memset(line_num_str, 'L', self->lines_width);
+            bline = (self->buffer->blines + line_num);
+            memset(line_num_str, ' ', self->lines_width);
             snprintf(line_num_str, self->lines_width + 1, line_format, line_num + 1); // TODO 0-indexed lines option
             margin_left = (viewport_x > 0) ? '^' : ' ';
             margin_right = (self->viewport_w < line_len) ? '$' : ' ';
         }
+
+        // Render line numbers
         mvwaddnstr(self->win_lines, view_line, 0, line_num_str, self->lines_width);
         wclrtoeol(self->win_lines);
-        mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
+
+        // TODO handle tab characters
+
+        // Render line
+        if (bline && bline->sspans_len > 0) {
+            offset = 0;
+            for (span_i = 0; span_i < bline->sspans_len; span_i++) {
+                span = (bline->sspans + span_i);
+                if (offset + span->length <= viewport_x) {
+                    // Span not yet in viewport; skip
+                    offset += span->length;
+                    continue;
+                } else if (offset >= viewport_x + self->viewport_w) {
+                    // Span past end of viewport; break
+                    break;
+                }
+                wattrset(self->win_buffer, span->attrs);
+                mvwaddnstr(
+                    self->win_buffer,
+                    view_line,
+                    ATTO_MAX(offset - viewport_x, 0),
+                    line_str + ATTO_MAX(offset - viewport_x, 0),
+                    span->length - (
+                        viewport_x > offset
+                        ? viewport_x - offset
+                        : (offset + span->length > viewport_x + self->viewport_w
+                            ? offset + span->length - viewport_x + self->viewport_w
+                            : 0
+                        )
+                    )
+                );
+            }
+        } else {
+            mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
+        }
         wclrtoeol(self->win_buffer);
+
+        // Render margins
         mvwaddch(self->win_margin_left, view_line, 0, margin_left);
         wclrtoeol(self->win_margin_left);
         mvwaddch(self->win_margin_right, view_line, 0, margin_right);

@@ -87,3 +87,24 @@ end)
 
 bview_keymap_push(bview_edit, keymap_default)
 bview_keymap_push(bview_prompt, keymap_default)
+
+local php_style = {
+    srule_new_single([=[\$[a-zA-Z_0-9$]*|[=!<>-]]=], COLOR_GREEN, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[\b(class|var|const|static|final|private|public|protected|function|switch|case|default|endswitch|if|else|elseif|endif|for|foreach|endfor|endforeach|while|endwhile|new|die|echo|continue|exit)\b]=], COLOR_YELLOW, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[\b-?[0-9]+\b]=], COLOR_BLUE, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[\b(true|false|null)\b]=], COLOR_BLUE, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[[(){}.,;]]=], COLOR_RED, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[(\$|=>|->|::)]=], COLOR_GREEN, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[(\[|\])]=], COLOR_WHITE, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=['([^']|(\\'))*']=], COLOR_YELLOW, COLOR_DEFAULT_BG, A_BOLD),
+    srule_new_single([=["([^"]|(\\"))*"]=], COLOR_YELLOW, COLOR_DEFAULT_BG, A_BOLD),
+    srule_new_single([=[(#.*|//.*)$]=], COLOR_CYAN, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[(<\?(php)?|\?>)]=], COLOR_GREEN, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_single([=[\s+$]=], COLOR_DEFAULT_FG, COLOR_GREEN, A_NORMAL),
+    srule_new_multi([[/\*]], [[\*/]], COLOR_CYAN, COLOR_DEFAULT_BG, A_NORMAL),
+    srule_new_multi([[\?>]], [[<\?(php)?]], COLOR_WHITE, COLOR_DEFAULT_BG, A_NORMAL)
+}
+
+for i, rule in ipairs(php_style) do
+    buffer_add_style(buffer_edit, rule)
+end
