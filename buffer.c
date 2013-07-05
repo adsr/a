@@ -282,14 +282,6 @@ int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int use
 }
 
 /**
- * Get styled (colored) spans of text for a line in the buffer
- */
-int _buffer_get_line_spans(buffer_t* self, int line, sspan_t* ret_spans, int* ret_num_spans) {
-    // TODO get line spans
-    return ATTO_RC_OK;
-}
-
-/**
  * Given an offset, return a line and column
  */
 int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col) {

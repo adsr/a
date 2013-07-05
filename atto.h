@@ -83,7 +83,6 @@ int buffer_delete(buffer_t* self, int offset, int len);
 int buffer_get_line(buffer_t* self, int line, int from_col, char* usebuf, int usebuf_len, char** ret_line, int* ret_len);
 int buffer_get_line_offset_len(buffer_t* self, int line, int from_col, int* ret_offset, int* ret_len);
 int buffer_get_substr(buffer_t* self, int offset, int len, char* usebuf, int usebuf_len, char** ret_substr, int* ret_len);
-int _buffer_get_line_spans(buffer_t* self, int line, sspan_t* ret_spans, int* ret_num_spans);
 int buffer_get_line_col(buffer_t* self, int offset, int* ret_line, int* ret_col);
 int buffer_get_offset(buffer_t* self, int line, int col);
 int buffer_search(buffer_t* self, char* needle, int offset);
