@@ -48,20 +48,26 @@ void _bview_buffer_callback(buffer_t* buffer, void* listener, int line, int col,
 
 /**
  * Called when self->cursor is moved
+ * Returns 0 if viewport did not actually move
  */
 int _bview_update_viewport(bview_t* self, int line, int col) {
-    _bview_update_viewport_dimension(self, line, self->viewport_h, &(self->viewport_y));
-    _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x));
+    int moved = 0;
+    moved = _bview_update_viewport_dimension(self, line, self->viewport_h, &(self->viewport_y)) | moved;
+    moved = _bview_update_viewport_dimension(self, col, self->viewport_w, &(self->viewport_x)) | moved;
+    return moved;
 }
 
 /**
  * Called by _bview_update_viewport for width and height
+ * Returns 0 if viewport did not actually move
  */
 int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, int* viewport_y) {
     int scope_start;
     int scope_stop;
     int scope;
+    int moved;
 
+    moved = 0;
     if (self->viewport_scope < 0) {
         scope = (self->viewport_scope < (self->viewport_h * -1)) ? self->viewport_h * -1 : self->viewport_scope;
         scope_start = *viewport_y - scope;
@@ -74,14 +80,18 @@ int _bview_update_viewport_dimension(bview_t* self, int line, int viewport_h, in
 
     if (line < scope_start) {
         *viewport_y -= scope_start - line;
+        moved = 1;
     } else if (line >= scope_stop) {
         *viewport_y += (line - scope_stop) + 1;
+        moved = 1;
     }
 
     if (*viewport_y < 0) {
         *viewport_y = 0; // TODO make negative viewport an option
+        moved = 1;
     }
-    return ATTO_RC_OK;
+
+    return moved;
 }
 
 /**
@@ -155,6 +165,14 @@ int bview_update(bview_t* self) {
                     break;
                 }
                 wattrset(self->win_buffer, span->attrs);
+ATTO_DEBUG_PRINTF("y=%d x=%d [%s]:%d @ %d\n", view_line, ATTO_MAX(offset - viewport_x, 0), line_str + ATTO_MAX(offset - viewport_x, 0), span->length - (
+    viewport_x > offset
+    ? viewport_x - offset
+    : (offset + span->length > viewport_x + self->viewport_w
+        ? offset + span->length - viewport_x + self->viewport_w
+        : 0
+    )
+), span->attrs);
                 mvwaddnstr(
                     self->win_buffer,
                     view_line,
@@ -169,8 +187,11 @@ int bview_update(bview_t* self) {
                         )
                     )
                 );
+                offset += span->length;
             }
+            wattrset(self->win_buffer, 0);
         } else {
+            wattrset(self->win_buffer, 0);
             mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
         }
         wclrtoeol(self->win_buffer);
@@ -182,7 +203,15 @@ int bview_update(bview_t* self) {
         wclrtoeol(self->win_margin_right);
     }
 
-    mvwaddnstr(self->win_caption, 0, 0, "[*] caption", self->width); // TODO caption
+    snprintf(
+        line_str,
+        self->viewport_w,
+        "[%c] %s",
+        self->buffer->has_unsaved_changes ? '*' : '=',
+        self->buffer->filename ? self->buffer->filename : "<untitled>"
+    );
+    mvwaddnstr(self->win_caption, 0, 0, line_str, self->width);
+    wclrtoeol(self->win_caption);
 
     wnoutrefresh(self->win_caption);
     wnoutrefresh(self->win_lines);

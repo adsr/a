@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     }
 
     // Run tests
-    if (argc == 2 && !strcmp(argv[1], "-T")) {
+    if (argc >= 2 && !strcmp(argv[1], "-T")) {
         exit(test_run());
     }
 
@@ -49,6 +49,10 @@ int main(int argc, char** argv) {
     // Init layout
     ATTO_DEBUG_PRINTF("%s\n", "Init layout");
     buffer = NULL; // TODO parse args
+    if (argc >= 2 && util_file_exists(argv[1])) {
+        buffer = buffer_new();
+        buffer_read(buffer, argv[1]);
+    }
     refresh();
     _layout_init(L, buffer);
     bview_set_active(g_bview_edit);
@@ -232,6 +236,9 @@ int _main_invoke_function(int luafn, bview_t* bview, lua_State* L, int width, in
 
     lua_pushlightuserdata(L, bview->buffer);
     lua_setfield(L, -2, "buffer");
+
+    lua_pushstring(L, bview->buffer->filename ? bview->buffer->filename : "");
+    lua_setfield(L, -2, "filename");
 
     lua_pushinteger(L, bview->buffer->byte_count);
     lua_setfield(L, -2, "byte_count");

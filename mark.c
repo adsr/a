@@ -25,8 +25,9 @@ int mark_set(mark_t* self, int offset) {
     self->target_col = col;
     self->offset = buffer_get_offset(self->buffer, line, col);
     if (g_bview_active && g_bview_active->cursor == self) {
-        _bview_update_viewport(g_bview_active, line, col);
-        bview_update(g_bview_active);
+        if (_bview_update_viewport(g_bview_active, line, col)) {
+            bview_update(g_bview_active);
+        }
     }
     return ATTO_RC_OK;
 }

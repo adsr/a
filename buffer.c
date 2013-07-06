@@ -60,6 +60,7 @@ int buffer_read(buffer_t* self, char* filename) {
     // Update filename and mtime
     self->filename = strdup(filename);
     self->filemtime = filestat.st_mtime;
+    self->has_unsaved_changes = 0;
 
     return ATTO_RC_OK;
 }
@@ -86,6 +87,7 @@ int buffer_write(buffer_t* self, char* filename, int is_append) {
     // Update filename and mtime
     self->filename = strdup(filename);
     self->filemtime = time(NULL);
+    self->has_unsaved_changes = 0;
 
     return ATTO_RC_OK;
 }
@@ -147,6 +149,11 @@ int buffer_insert(buffer_t* self, int offset, char* str, int len, int* ret_offse
     // Update byte_count
     self->byte_count += len;
 
+    // Mark unsaved changes
+    if (!self->has_unsaved_changes) {
+        self->has_unsaved_changes = 1;
+    }
+
     // Update metadata
     _buffer_update_metadata(self, offset, line, col, str, len);
 
@@ -206,6 +213,11 @@ int buffer_delete(buffer_t* self, int offset, int len) {
 
     // Update byte_count
     self->byte_count -= len;
+
+    // Mark unsaved changes
+    if (!self->has_unsaved_changes) {
+        self->has_unsaved_changes = 1;
+    }
 
     // Update metadata
     _buffer_update_metadata(self, offset, line, col, delta, len * -1);
@@ -504,10 +516,18 @@ int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener) {
  * Update various metadata of a buffer after it has been edited
  */
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len) {
-    _buffer_update_line_offsets(self, line);
+    _buffer_update_line_offsets(self, line, delta, delta_len);
     _buffer_update_marks(self, offset, delta_len);
     _buffer_update_styles(self, line, delta, delta_len, 1);
     _buffer_notify_listeners(self, line, col, delta, delta_len);
+
+/*
+char* all;
+buffer_get_substr(self, 0, -1, NULL, 0, &all, NULL);
+ATTO_DEBUG_PRINTF("buffer_data=[%s]\n", all);
+free(all);
+*/
+
     return ATTO_RC_OK;
 }
 
@@ -525,48 +545,112 @@ int _buffer_notify_listeners(buffer_t* self, int line, int col, char* delta, int
 /**
  * Update line offsets after dirty_line.
  */
-int _buffer_update_line_offsets(buffer_t* self, int dirty_line) {
+int _buffer_update_line_offsets(buffer_t* self, int dirty_line, char* delta, int delta_len) {
     int line;
     int offset;
     int prev_offset;
     char* newline;
-
-    // TODO optimize if we know no newlines were added
+    int newline_delta;
+    int abs_delta_len;
+    int orig_line_count;
 
     // Sanitize input
     dirty_line = ATTO_MIN(self->line_count - 1, ATTO_MAX(0, dirty_line));
+
+/*
+    // Find number of newlines added/deleted
+    newline_delta = 0;
+    offset = 0;
+    abs_delta_len = abs(delta_len);
+    while (offset < abs_delta_len) {
+        newline = (char*)memchr(delta + offset, '\n', abs_delta_len - offset);
+        if (!newline) {
+            break;
+        }
+        newline_delta += 1;
+        offset = (newline + 1) - delta;
+    }
+    newline_delta = delta_len < 0 ? newline_delta * -1 : newline_delta;
+    orig_line_count = self->line_count;
+    self->line_count += newline_delta;
+
+    // TODO optimize when newline_delta == 0
+
+    // TODO expand blines in one swoop + memmove blines
+    if (self->line_count > self->blines_size) {
+        self->blines_size = self->line_count;
+        self->blines = (bline_t*)realloc(
+            self->blines,
+            sizeof(bline_t) * self->blines_size
+        );
+    }
+
+ATTO_DEBUG_PRINTF("blines_size=%d dirty_line=%d newline_delta=%d\n", self->blines_size, dirty_line, newline_delta);
+//endwin();
+//exit(1);
+// 4298505 [_buffer_update_line_offsets] blines_size=935 dirty_line=0 newline_delta=934
+
+    // Shift blines up or down
+    if (newline_delta > 0) {
+        memmove(
+            self->blines + dirty_line + newline_delta,
+            self->blines + dirty_line,
+            sizeof(bline_t) * (orig_line_count - dirty_line)
+        );
+    } else if (newline_delta < 0) {
+        memmove(
+            self->blines + dirty_line,
+            self->blines + dirty_line - newline_delta,
+            sizeof(bline_t) * (orig_line_count - dirty_line - abs(newline_delta))
+        );
+    }
+*/
 
     // Start offset of dirty_line
     offset = self->blines[dirty_line].offset;
 
     // Refresh line offsets of lines after dirty_line
-    prev_offset = 0;
-    while (offset <= self->byte_count) {
+    while (offset < self->byte_count) {
+        // Look for a newline
         newline = (char*)memchr(self->data + offset, '\n', self->byte_count - offset);
         if (!newline) {
             // No more newlines
             break;
-        } else {
-            dirty_line += 1;
-            // Expand blines if needed
-            if (dirty_line >= self->blines_size) {
-                self->blines_size += ATTO_LINE_OFFSET_ALLOC_INCR;
-                self->blines = (bline_t*)realloc(
-                    self->blines,
-                    sizeof(bline_t) * self->blines_size
-                );
-            }
-            // Calculate line offset (1 byte after the newline we just found)
-            offset = (newline + 1) - self->data;
-            self->blines[dirty_line].offset = offset;
-            self->blines[dirty_line].length = offset - prev_offset;
         }
+
+        // Found!
+        dirty_line += 1;
+
+        // Expand blines if needed
+        if (dirty_line >= self->blines_size) {
+            self->blines = (bline_t*)realloc(
+                self->blines,
+                sizeof(bline_t) * (self->blines_size + ATTO_LINE_OFFSET_ALLOC_INCR)
+            );
+            self->blines_size += ATTO_LINE_OFFSET_ALLOC_INCR;
+        }
+
+        // Calculate line offset (1 byte after the newline we just found)
+        prev_offset = offset;
+        offset = (newline + 1) - self->data;
+
+        // Set length of previous line
+        self->blines[dirty_line - 1].length = (offset - prev_offset) - 1;
+ATTO_DEBUG_PRINTF("line %d length = %d\n", dirty_line - 1, self->blines[dirty_line - 1].length);
+
+        // Set offset of dirty_line
+        self->blines[dirty_line].offset = offset;
+
+        // Remember offset
         prev_offset = offset;
     }
 
     // Update line_count
     self->line_count = dirty_line + 1; // dirty_line is 0-indexed so add 1
-    self->blines[dirty_line].length = self->blines[dirty_line].offset - prev_offset;
+
+    // Set length of last 2 lines
+    self->blines[dirty_line].length = self->byte_count - self->blines[dirty_line].offset;
+ATTO_DEBUG_PRINTF("post line %d length = %d\n", dirty_line, self->blines[dirty_line].length);
 
     return ATTO_RC_OK;
 }
@@ -595,7 +679,7 @@ int _buffer_update_marks(buffer_t* self, int offset, int delta) {
 /**
  * Apply style rules to lines after dirty_line
  */
-int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len, int bail_on_matching_style_hash) {
+int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len, int bail_on_matching_style) {
     int line;
     bline_t* bline;
     srule_node_t* node;
@@ -611,29 +695,42 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
     mark_t* range_start;
     mark_t* range_end;
     int attr_col;
-    int style_hash;
+    int rc;
+    int line_style_changed;
 
     // Update styles starting from dirty_line
     char_attrs_size = 0;
     char_attrs = NULL;
     open_rule = dirty_line > 0 ? self->blines[dirty_line - 1].open_rule : NULL;
+
+ATTO_DEBUG_PRINTF("line[%d].open_rule = %p\n", dirty_line - 1, open_rule);
     for (line = dirty_line; line < self->line_count; line++) {
         bline = (self->blines + line);
         style_from_col = 0;
 
         // Nothing to style if length is zero
         if (bline->length < 1) {
-            continue;
+            if (open_rule && !bline->open_rule) {
+                bline->open_rule = open_rule;
+            }
+            goto reduce_char_attrs;
         }
 
         // Expand char_attrs if needed
         if (char_attrs_size < bline->length) {
+ATTO_DEBUG_PRINTF("%s\n", "resized char_attrs");
             char_attrs_size = bline->length;
-            char_attrs = (int*)realloc(char_attrs, char_attrs_size * sizeof(int));
+            if (char_attrs) {
+                char_attrs = (int*)realloc(char_attrs, char_attrs_size * sizeof(int));
+            } else {
+                char_attrs = (int*)malloc(char_attrs_size * sizeof(int));
+            }
         }
+        memset(char_attrs, 0, sizeof(int) * char_attrs_size);
 
         // If there's an open rule, see if it ends on this line
         if (open_rule) {
+ATTO_DEBUG_PRINTF("%s\n", "open_rule!");
             // See if open_rule ends on this line
             if (open_rule->type == ATTO_SRULE_TYPE_MULTI) {
                 // See if cregex_end is on this line
@@ -669,6 +766,7 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                 // We have a match!
 
                 // Style attrs up until matches[1]
+ATTO_DEBUG_PRINTF("%s\n", "open_rule found");
                 for (col = 0; col < matches[1]; col++) char_attrs[col] = open_rule->attrs;
                 style_from_col = matches[1]; // Don't let other rules mess with chars before matches[1]
 
@@ -679,6 +777,7 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                 // No match
 
                 // This entire is styled by open_rule
+ATTO_DEBUG_PRINTF("%s\n", "open_rule not found");
                 for (col = 0; col < bline->length; col++) char_attrs[col] = open_rule->attrs;
 
                 // Leave open_rule open
@@ -687,21 +786,26 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                 // We're done styling this line
                 goto reduce_char_attrs;
             }
+        } else if (bline->open_rule) {
+            bline->open_rule = NULL;
         }
 
         // Apply style rules
+ATTO_DEBUG_PRINTF("Applying styles to line:%d[%s]:%d\n", line, self->data + bline->offset, bline->length);
         LL_FOREACH(self->styles, node) {
             re_offset = 0;
             rule = node->rule;
             if (rule->type == ATTO_SRULE_TYPE_SINGLE) {
                 // Apply single line style rule
                 while (re_offset < bline->length) {
-                    if (pcre_exec(rule->cregex, NULL, self->data + bline->offset, bline->length - re_offset, re_offset, 0, matches, 3) < 0) {
+                    if ((rc = pcre_exec(rule->cregex, NULL, self->data + bline->offset, bline->length, re_offset, 0, matches, 3)) < 0) {
+if (re_offset > 0) ATTO_DEBUG_PRINTF("No match for rule[%s] at offset=%d len=%d rc=%d\n", rule->regex, re_offset, bline->length - re_offset, rc);
                         // No match
                         break;
                     }
                     // Match! Style matches[0] until matches[1] with rule->attrs as long as we're past style_from_col
                     if (matches[0] >= style_from_col) {
+ATTO_DEBUG_PRINTF("This rule touched: %s [%d:%d] with %d\n", rule->regex, matches[0], matches[1] - 1, rule->attrs);
                         for (col = matches[0]; col < matches[1]; col++) char_attrs[col] = rule->attrs;
                     }
                     re_offset = matches[1]; // Advance regex cursor
@@ -709,7 +813,7 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
             } else if (rule->type == ATTO_SRULE_TYPE_MULTI) {
                 // Apply multi line style rule
                 while (re_offset < bline->length) {
-                    if (pcre_exec(rule->cregex, NULL, self->data + bline->offset, bline->length - re_offset, re_offset, 0, matches, 3) < 0) {
+                    if (pcre_exec(rule->cregex, NULL, self->data + bline->offset, bline->length, re_offset, 0, matches, 3) < 0) {
                         // No match
                         break;
                     }
@@ -722,10 +826,11 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                     // Now find cregex_end
                     multi_start = matches[0];
                     re_offset = matches[1]; // Advance regex_cursor
-                    if (pcre_exec(rule->cregex_end, NULL, self->data + bline->offset, bline->length - re_offset, re_offset, 0, matches, 3) < 0) {
+                    if (pcre_exec(rule->cregex_end, NULL, self->data + bline->offset, bline->length, re_offset, 0, matches, 3) < 0) {
                         // No match for cregex_end; it might end on another line
 
                         // Style the rest of the line with rule
+ATTO_DEBUG_PRINTF("No match for cregex_end, setting line[%d].open_rule to %p\n", line, rule);
                         for (col = multi_start; col < bline->length; col++) char_attrs[col] = rule->attrs;
 
                         // Leave rule open
@@ -736,6 +841,7 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                         goto reduce_char_attrs;
                     } else {
                         // Match! Style multi_start until matches[1] with rule->attrs
+ATTO_DEBUG_PRINTF("%s\n", "cregex -> cregex_end found");
                         for (col = multi_start; col < matches[1]; col++) char_attrs[col] = rule->attrs;
                         re_offset = matches[1]; // Advance regex cursor
                     }
@@ -753,11 +859,13 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                     // Range starts on this line!
                     if (range_end->offset < bline->offset + bline->length) {
                         // Range ends on this line! Style range_start->col until range_end->col with rule->attrs
+ATTO_DEBUG_PRINTF("%s\n", "range -> range_end found");
                         for (col = range_start->col; col < range_end->col; col++) char_attrs[col] = rule->attrs;
                     } else {
                         // Range ends on another line
 
                         // Style the rest of the line with rule
+ATTO_DEBUG_PRINTF("%s\n", "range_end not found");
                         for (col = range_start->col; col < bline->length; col++) char_attrs[col] = rule->attrs;
 
                         // Leave rule open
@@ -770,13 +878,16 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
                 }
             }
         }
+ATTO_DEBUG_PRINTF("%s\n", "char_attrs[");
+for (col = 0; col < bline->length; col++) ATTO_DEBUG_PRINTF("    %d\n", char_attrs[col]);
+ATTO_DEBUG_PRINTF("%s\n", "]");
 
         // Now we need to convert char_attrs to an array of sspan_t
         // I.e., AAAABBBCDDDDDDDD -> {4,A},{3,B},{1,C},{8,D}
 reduce_char_attrs: (void)self;
         attr_col = 0;
         bline->sspans_len = 0;
-        style_hash = 0;
+        line_style_changed = 0;
         for (col = 1; col < bline->length + 1; col++) {
             if (col == bline->length || char_attrs[attr_col] != char_attrs[col]) {
                 // Style attr_col thru col-1 with char_attrs[attr_col]
@@ -786,17 +897,17 @@ reduce_char_attrs: (void)self;
                 if (bline->sspans_size < bline->sspans_len) {
                     bline->sspans_size += ATTO_SSPAN_RANGE_ALLOC_INCR;
                     bline->sspans = (sspan_t*)realloc(bline->sspans, sizeof(sspan_t) * bline->sspans_size);
+                    line_style_changed = 1;
                 }
 
                 // Fill in span
-                bline->sspans[bline->sspans_len - 1].length = col - attr_col;
-                bline->sspans[bline->sspans_len - 1].attrs = char_attrs[attr_col];
-
-                // Compute style_hash
-                if (bail_on_matching_style_hash) {
-                    style_hash ^= bline->sspans_len;
-                    style_hash ^= attr_col;
-                    style_hash ^= char_attrs[attr_col];
+ATTO_DEBUG_PRINTF("line[%d].span[%d].length = %d\n", line, bline->sspans_len - 1, col - attr_col);
+                if (bline->sspans[bline->sspans_len - 1].length != col - attr_col
+                    || bline->sspans[bline->sspans_len - 1].attrs != char_attrs[attr_col]
+                ) {
+                    bline->sspans[bline->sspans_len - 1].length = col - attr_col;
+                    bline->sspans[bline->sspans_len - 1].attrs = char_attrs[attr_col];
+                    line_style_changed = 1;
                 }
 
                 // Advance attr_col
@@ -804,10 +915,11 @@ reduce_char_attrs: (void)self;
             }
         }
 
-        if (bail_on_matching_style_hash && style_hash && bline->style_hash == style_hash) {
-            // This line is (probably) styled the same way as it was before.
+        if (bail_on_matching_style && bline->sspans_len > 0 && !line_style_changed) {
+            // TODO fix this or use exact comparison instead of hash
+            // This line is styled the same way as it was before.
             // We're done!
-            break;
+            //break;
         }
     }
 
@@ -817,9 +929,6 @@ reduce_char_attrs: (void)self;
     }
 
     return ATTO_RC_OK;
-}
-
-int _buffer_update_styles_single() {
 }
 
 /**

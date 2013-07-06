@@ -41,9 +41,10 @@ keymap_bind(keymap_default, [[C\]], function(context) bview_split(context.bview,
 keymap_bind(keymap_default, [[C_]], function(context) bview_split(context.bview, 0, 0.5) end)
 
 keymap_bind(keymap_default, "CO", function(context)
-    prompt("Save to path: ", "default", function(response)
+    prompt("Save to path: ", context.filename, function(response)
         atto_debug("reponse=" .. response)
         buffer_write(context.buffer, response, 0)
+        bview_update(context.bview)
     end)
 end)
 

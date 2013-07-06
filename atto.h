@@ -70,6 +70,7 @@ struct buffer_s {
     mark_t* marks;
     srule_node_t* styles;
     blistener_t* listeners;
+    int has_unsaved_changes;
     int line_count;
     int byte_count;
 };
@@ -97,7 +98,7 @@ blistener_t* buffer_add_buffer_listener(buffer_t* self, void* listener, blistene
 int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener);
 int buffer_destroy(buffer_t* self);
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len);
-int _buffer_update_line_offsets(buffer_t* self, int dirty_line);
+int _buffer_update_line_offsets(buffer_t* self, int dirty_line, char* delta, int delta_len);
 int _buffer_update_marks(buffer_t* self, int offset, int delta);
 int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta_len, int bail_on_matching_style_hash);
 int _buffer_expand_line_structs(buffer_t* self);
@@ -291,6 +292,7 @@ int lapi_init(lua_State** L);
 const char* util_memrmem(const char* s, size_t slen, const char* t, size_t tlen);
 pcre* util_compile_regex(char* regex);
 int util_get_ncurses_color_pair(int fg_num, int bg_num);
+int util_file_exists(const char *path);
 
 /**
  * Helper functions for main

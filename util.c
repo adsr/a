@@ -65,3 +65,11 @@ int util_get_ncurses_color_pair(int fg_num, int bg_num) {
     pair_count += 1;
     return COLOR_PAIR(pair);
 }
+
+/**
+ * Check if a file exists
+ */
+int util_file_exists(const char *path) {
+    struct stat sb;
+    return stat(path, &sb) == 0 && S_ISREG(sb.st_mode);
+}

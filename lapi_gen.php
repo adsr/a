@@ -12,7 +12,7 @@ foreach ($lines as $line) {
         $func_args = $func_args ? array_map(function($pair) {
             return preg_split('/\s+/', $pair);
         }, array_map('trim', explode(',', $func_args))) : array();
-        if (preg_match('/^(_|lapi_)/', $func_name)) {
+        if (preg_match('/^(_|lapi_|util_)/', $func_name)) {
             continue;
         }
         $all_funcs[] = array(null, $func_rtype, $func_name, $func_args);
