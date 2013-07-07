@@ -16,7 +16,6 @@ keymap_t* keymap_new(int is_fall_through_allowed) {
  */
 int keymap_bind(keymap_t* self, char* keyc, int fn_handler) {
     kbinding_t* binding;
-    ATTO_DEBUG_PRINTF("Binding %s to %d\n", keyc, fn_handler);
     binding = kbinding_new(keyc, fn_handler);
     HASH_ADD_STR(self->bindings, keyc, binding);
     return ATTO_RC_OK;
@@ -26,7 +25,6 @@ int keymap_bind(keymap_t* self, char* keyc, int fn_handler) {
  * Set default binding
  */
 int keymap_bind_default(keymap_t* self, int fn_handler) {
-    ATTO_DEBUG_PRINTF("Binding default to %d\n", fn_handler);
     self->default_fn = fn_handler;
     return ATTO_RC_OK;
 }

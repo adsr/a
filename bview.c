@@ -109,7 +109,7 @@ int bview_update(bview_t* self) {
     int viewport_x;
     char line_format[] = "%1d";
     bline_t* bline;
-    int span_i;
+    int i;
     int offset;
     int length;
     sspan_t* span;
@@ -151,11 +151,19 @@ int bview_update(bview_t* self) {
 
         // TODO handle tab characters
 
+        // Replace non-ascii characters with '?'
+        // Replace tabs with tabs
+        for (i = 0; i < self->viewport_w; i++) {
+            if (line_str[i] != '\0' && (line_str[i] < 0x20 || line_str[i] > 0x7e)) {
+                *(line_str + i) = '?';
+            }
+        }
+
         // Render line
         if (bline && bline->sspans_len > 0) {
             offset = 0;
-            for (span_i = 0; span_i < bline->sspans_len; span_i++) {
-                span = (bline->sspans + span_i);
+            for (i = 0; i < bline->sspans_len; i++) {
+                span = (bline->sspans + i);
                 if (offset + span->length <= viewport_x) {
                     // Span not yet in viewport; skip
                     offset += span->length;
@@ -164,15 +172,8 @@ int bview_update(bview_t* self) {
                     // Span past end of viewport; break
                     break;
                 }
+ATTO_DEBUG_PRINTF("render blinep=%p spansp=%p line=%d span=%d attrs=%d\n", bline, bline->sspans, line_num, i, span->attrs);
                 wattrset(self->win_buffer, span->attrs);
-ATTO_DEBUG_PRINTF("y=%d x=%d [%s]:%d @ %d\n", view_line, ATTO_MAX(offset - viewport_x, 0), line_str + ATTO_MAX(offset - viewport_x, 0), span->length - (
-    viewport_x > offset
-    ? viewport_x - offset
-    : (offset + span->length > viewport_x + self->viewport_w
-        ? offset + span->length - viewport_x + self->viewport_w
-        : 0
-    )
-), span->attrs);
                 mvwaddnstr(
                     self->win_buffer,
                     view_line,
@@ -191,6 +192,7 @@ ATTO_DEBUG_PRINTF("y=%d x=%d [%s]:%d @ %d\n", view_line, ATTO_MAX(offset - viewp
             }
             wattrset(self->win_buffer, 0);
         } else {
+if (bline) ATTO_DEBUG_PRINTF("render unstyled line=%d\n", line_num);
             wattrset(self->win_buffer, 0);
             mvwaddnstr(self->win_buffer, view_line, 0, line_str, self->viewport_w);
         }

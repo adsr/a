@@ -73,3 +73,25 @@ int util_file_exists(const char *path) {
     struct stat sb;
     return stat(path, &sb) == 0 && S_ISREG(sb.st_mode);
 }
+
+
+/**
+ * Return number of occurences of ch in str
+ */
+int util_memchr_count(int ch, char* str, int len) {
+    int count;
+    char* match;
+    int offset;
+
+    offset = 0;
+    count = 0;
+    while (offset < len) {
+        match = (char*)memchr(str + offset, ch, len - offset);
+        if (!match) {
+            break;
+        }
+        count += 1;
+        offset = (match + 1) - str;
+    }
+    return count;
+}

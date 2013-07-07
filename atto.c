@@ -48,13 +48,8 @@ int main(int argc, char** argv) {
 
     // Init layout
     ATTO_DEBUG_PRINTF("%s\n", "Init layout");
-    buffer = NULL; // TODO parse args
-    if (argc >= 2 && util_file_exists(argv[1])) {
-        buffer = buffer_new();
-        buffer_read(buffer, argv[1]);
-    }
     refresh();
-    _layout_init(L, buffer);
+    _layout_init(L, NULL);
     bview_set_active(g_bview_edit);
     _script_init(L);
 
@@ -68,6 +63,12 @@ int main(int argc, char** argv) {
     // Run Lua user script
     ATTO_DEBUG_PRINTF("%s\n", "Run Lua script");
     _main_run_lua_script(L);
+
+    // Load file from argv
+    if (argc >= 2 && util_file_exists(argv[1])) {
+        buffer_read(g_bview_edit->buffer, argv[1]);
+        mark_set(g_bview_edit->cursor, 0);
+    }
 
     // Enter main loop
     ATTO_DEBUG_PRINTF("%s\n", "Enter main loop");
@@ -99,7 +100,6 @@ void _main_loop(lua_State* L, int width, int height) {
 
         // Get input
         _main_get_input(keyc, keys);
-        ATTO_DEBUG_PRINTF("Got input: %s (%d %d)\n", keyc, keys[0], keys[1]);
         if (!strcmp(keyc, "q")) {
             break;
         }
@@ -112,7 +112,6 @@ void _main_loop(lua_State* L, int width, int height) {
 
         // Map input to function
         luafn = _main_map_input_to_function(g_bview_active, keyc);
-        ATTO_DEBUG_PRINTF("Function for input: %d\n", luafn);
         if (luafn == LUA_REFNIL) {
             continue;
         }

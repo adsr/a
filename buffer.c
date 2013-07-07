@@ -115,7 +115,7 @@ int buffer_insert(buffer_t* self, int offset, char* str, int len, int* ret_offse
     int line;
     int col;
 
-    ATTO_DEBUG_PRINTF("insert data [%s]:%d at offset=%d\n", str, len, offset);
+    ATTO_DEBUG_PRINTF("[%s]:%d at offset=%d\n", str, len, offset);
 
     // Sanitize input
     offset = ATTO_MAX(0, ATTO_MIN(offset, self->byte_count));
@@ -177,6 +177,8 @@ int buffer_delete(buffer_t* self, int offset, int len) {
     int line;
     int col;
     char* delta;
+
+    ATTO_DEBUG_PRINTF("%d at offset=%d\n", len, offset);
 
     // Nothing to do if byte_count is lt 1
     if (self->byte_count < 1) {
@@ -516,7 +518,7 @@ int buffer_remove_buffer_listener(buffer_t* self, blistener_t* blistener) {
  * Update various metadata of a buffer after it has been edited
  */
 int _buffer_update_metadata(buffer_t* self, int offset, int line, int col, char* delta, int delta_len) {
-    _buffer_update_line_offsets(self, line, delta, delta_len);
+    _buffer_update_blines(self, offset, line, col, delta, delta_len);
     _buffer_update_marks(self, offset, delta_len);
     _buffer_update_styles(self, line, delta, delta_len, 1);
     _buffer_notify_listeners(self, line, col, delta, delta_len);
@@ -543,73 +545,100 @@ int _buffer_notify_listeners(buffer_t* self, int line, int col, char* delta, int
 }
 
 /**
- * Update line offsets after dirty_line.
+ * Update blines array
  */
-int _buffer_update_line_offsets(buffer_t* self, int dirty_line, char* delta, int delta_len) {
+int _buffer_update_blines(buffer_t* self, int dirty_offset, int dirty_line, int dirty_col, char* delta, int delta_len) {
+    int newline_delta;
     int line;
+    int line_stop;
+    int orig_line_count;
+    int shift_src;
+    int shift_dest;
+    int shift_size;
     int offset;
     int prev_offset;
     char* newline;
-    int newline_delta;
-    int abs_delta_len;
-    int orig_line_count;
+    sspan_t* spans;
 
     // Sanitize input
-    dirty_line = ATTO_MIN(self->line_count - 1, ATTO_MAX(0, dirty_line));
+    dirty_line = ATTO_MIN(self->line_count - 1, ATTO_MAX(0, dirty_line)); // TODO not sure this is needed
 
-/*
-    // Find number of newlines added/deleted
-    newline_delta = 0;
-    offset = 0;
-    abs_delta_len = abs(delta_len);
-    while (offset < abs_delta_len) {
-        newline = (char*)memchr(delta + offset, '\n', abs_delta_len - offset);
-        if (!newline) {
-            break;
+    // Count newlines in delta
+    newline_delta = util_memchr_count('\n', delta, abs(delta_len)) * (delta_len > 0 ? 1 : -1);
+ATTO_DEBUG_PRINTF("newline_delta=%d\n", newline_delta);
+
+    // If there are no newlines in delta...
+    if (newline_delta == 0) {
+        // 1. Update length of dirty_line
+        self->blines[dirty_line].length += delta_len;
+
+        // 2. Update offsets of lines after dirty_line
+        for (line = dirty_line + 1; line < self->line_count; line++) {
+            self->blines[line].offset += delta_len;
         }
-        newline_delta += 1;
-        offset = (newline + 1) - delta;
+
+        // Done!
+goto winners;
+        //return ATTO_RC_OK;
     }
-    newline_delta = delta_len < 0 ? newline_delta * -1 : newline_delta;
+
+    // If we get here, it means newlines are present in the delta
+
+    // 1. Update line_count
     orig_line_count = self->line_count;
     self->line_count += newline_delta;
-
-    // TODO optimize when newline_delta == 0
-
-    // TODO expand blines in one swoop + memmove blines
     if (self->line_count > self->blines_size) {
+        // Need to expand blines array
         self->blines_size = self->line_count;
         self->blines = (bline_t*)realloc(
             self->blines,
             sizeof(bline_t) * self->blines_size
         );
     }
+ATTO_DEBUG_PRINTF("orig_line_count=%d new_line_count=%d\n", orig_line_count, self->line_count);
 
-ATTO_DEBUG_PRINTF("blines_size=%d dirty_line=%d newline_delta=%d\n", self->blines_size, dirty_line, newline_delta);
-//endwin();
-//exit(1);
-// 4298505 [_buffer_update_line_offsets] blines_size=935 dirty_line=0 newline_delta=934
-
-    // Shift blines up or down
-    if (newline_delta > 0) {
+    // 2. Shift blines up or down
+    offset = self->blines[dirty_line].offset; // Save orig offset
+    shift_dest = newline_delta > 0 ? (dirty_line + 1 + newline_delta) : (dirty_line);
+    shift_src = newline_delta > 0 ? (dirty_line + 1) : (dirty_line - newline_delta);
+    shift_size = newline_delta > 0 ? (orig_line_count - dirty_line - 1) : (orig_line_count - dirty_line + newline_delta);
+    if (shift_size > 0) {
         memmove(
-            self->blines + dirty_line + newline_delta,
-            self->blines + dirty_line,
-            sizeof(bline_t) * (orig_line_count - dirty_line)
+            self->blines + shift_dest,
+            self->blines + shift_src,
+            sizeof(bline_t) * shift_size
         );
-    } else if (newline_delta < 0) {
-        memmove(
-            self->blines + dirty_line,
-            self->blines + dirty_line - newline_delta,
-            sizeof(bline_t) * (orig_line_count - dirty_line - abs(newline_delta))
-        );
+ATTO_DEBUG_PRINTF("shifted bline block of size %d @ %d to %d\n", shift_size, shift_src, shift_dest);
     }
-*/
 
-    // Start offset of dirty_line
-    offset = self->blines[dirty_line].offset;
+    // 3. Alloc sspans for new lines
+    if (newline_delta > 0) {
+        line = dirty_line + 1;
+        line_stop = line + newline_delta + 1;
+    } else {
+        line = orig_line_count;
+        line_stop = self->blines_size;
+    }
+ATTO_DEBUG_PRINTF("resetting spans from=%d until=%d\n", line, line_stop);
+    for (; line < line_stop; line++) {
+        self->blines[line].sspans_size = ATTO_SSPAN_RANGE_ALLOC_INCR;
+        self->blines[line].sspans = (sspan_t*)calloc(ATTO_SSPAN_RANGE_ALLOC_INCR, sizeof(sspan_t));
+        self->blines[line].sspans_len = 0;
+    }
 
-    // Refresh line offsets of lines after dirty_line
+    // 4. Invalidate styles
+    if (dirty_line + 1 < self->line_count) {
+        self->blines[dirty_line + 1].sspans_len = 0;
+    }
+    if (newline_delta > 0) {
+        for (line = dirty_line + 2; line < dirty_line + newline_delta; line++) {
+            self->blines[line].sspans_len = 0;
+        }
+    }
+
+    // 5. Recalculate offsets and lengths
+    line = dirty_line;
+    self->blines[line].offset = offset;
     while (offset < self->byte_count) {
         // Look for a newline
         newline = (char*)memchr(self->data + offset, '\n', self->byte_count - offset);
@@ -618,39 +647,32 @@ ATTO_DEBUG_PRINTF("blines_size=%d dirty_line=%d newline_delta=%d\n", self->bline
             break;
         }
 
-        // Found!
-        dirty_line += 1;
-
-        // Expand blines if needed
-        if (dirty_line >= self->blines_size) {
-            self->blines = (bline_t*)realloc(
-                self->blines,
-                sizeof(bline_t) * (self->blines_size + ATTO_LINE_OFFSET_ALLOC_INCR)
-            );
-            self->blines_size += ATTO_LINE_OFFSET_ALLOC_INCR;
-        }
+        // Found a newline!
+        line += 1;
 
         // Calculate line offset (1 byte after the newline we just found)
         prev_offset = offset;
         offset = (newline + 1) - self->data;
 
         // Set length of previous line
-        self->blines[dirty_line - 1].length = (offset - prev_offset) - 1;
-ATTO_DEBUG_PRINTF("line %d length = %d\n", dirty_line - 1, self->blines[dirty_line - 1].length);
+        self->blines[line - 1].length = (offset - prev_offset) - 1;
 
-        // Set offset of dirty_line
-        self->blines[dirty_line].offset = offset;
+        // Set offset of this line
+        self->blines[line].offset = offset;
 
         // Remember offset
         prev_offset = offset;
     }
 
     // Update line_count
-    self->line_count = dirty_line + 1; // dirty_line is 0-indexed so add 1
+    self->line_count = line + 1;
 
-    // Set length of last 2 lines
-    self->blines[dirty_line].length = self->byte_count - self->blines[dirty_line].offset;
-ATTO_DEBUG_PRINTF("post line %d length = %d\n", dirty_line, self->blines[dirty_line].length);
+    // Set length of last line
+    self->blines[line].length = self->byte_count - self->blines[line].offset;
+
+winners: for (line = 0; line < self->line_count; line++) {
+ATTO_DEBUG_PRINTF("bline[%d] o=%d l=%d sspans_len=%d\n", line, self->blines[line].offset, self->blines[line].length, self->blines[line].sspans_len);
+}
 
     return ATTO_RC_OK;
 }
@@ -667,9 +689,6 @@ int _buffer_update_marks(buffer_t* self, int offset, int delta) {
     LL_FOREACH(self->marks, mark) {
         if (mark->offset >= offset) {
             mark_move(mark, delta);
-            ATTO_DEBUG_PRINTF("mark moved %d to %d [%d:%d]\n", delta, mark->offset, mark->line, mark->col);
-        } else {
-            ATTO_DEBUG_PRINTF("%s\n", "good");
         }
     }
 
@@ -697,6 +716,7 @@ int _buffer_update_styles(buffer_t* self, int dirty_line, char* delta, int delta
     int attr_col;
     int rc;
     int line_style_changed;
+    int sspans_len;
 
     // Update styles starting from dirty_line
     char_attrs_size = 0;
@@ -791,7 +811,6 @@ ATTO_DEBUG_PRINTF("%s\n", "open_rule not found");
         }
 
         // Apply style rules
-ATTO_DEBUG_PRINTF("Applying styles to line:%d[%s]:%d\n", line, self->data + bline->offset, bline->length);
         LL_FOREACH(self->styles, node) {
             re_offset = 0;
             rule = node->rule;
@@ -831,6 +850,11 @@ ATTO_DEBUG_PRINTF("This rule touched: %s [%d:%d] with %d\n", rule->regex, matche
 
                         // Style the rest of the line with rule
 ATTO_DEBUG_PRINTF("No match for cregex_end, setting line[%d].open_rule to %p\n", line, rule);
+if (bline->length > 100) {
+ATTO_DEBUG_PRINTF("big len=%d\n", bline->length);
+endwin();
+exit(1);
+}
                         for (col = multi_start; col < bline->length; col++) char_attrs[col] = rule->attrs;
 
                         // Leave rule open
@@ -878,7 +902,7 @@ ATTO_DEBUG_PRINTF("%s\n", "range_end not found");
                 }
             }
         }
-ATTO_DEBUG_PRINTF("%s\n", "char_attrs[");
+ATTO_DEBUG_PRINTF("line=%d char_attrs[\n", line);
 for (col = 0; col < bline->length; col++) ATTO_DEBUG_PRINTF("    %d\n", char_attrs[col]);
 ATTO_DEBUG_PRINTF("%s\n", "]");
 
@@ -886,27 +910,26 @@ ATTO_DEBUG_PRINTF("%s\n", "]");
         // I.e., AAAABBBCDDDDDDDD -> {4,A},{3,B},{1,C},{8,D}
 reduce_char_attrs: (void)self;
         attr_col = 0;
-        bline->sspans_len = 0;
+        sspans_len = 0;
         line_style_changed = 0;
         for (col = 1; col < bline->length + 1; col++) {
             if (col == bline->length || char_attrs[attr_col] != char_attrs[col]) {
                 // Style attr_col thru col-1 with char_attrs[attr_col]
-                bline->sspans_len += 1;
+                sspans_len += 1;
 
                 // Resize sspans if needed
-                if (bline->sspans_size < bline->sspans_len) {
+                if (bline->sspans_size < sspans_len) {
                     bline->sspans_size += ATTO_SSPAN_RANGE_ALLOC_INCR;
                     bline->sspans = (sspan_t*)realloc(bline->sspans, sizeof(sspan_t) * bline->sspans_size);
                     line_style_changed = 1;
                 }
 
                 // Fill in span
-ATTO_DEBUG_PRINTF("line[%d].span[%d].length = %d\n", line, bline->sspans_len - 1, col - attr_col);
-                if (bline->sspans[bline->sspans_len - 1].length != col - attr_col
-                    || bline->sspans[bline->sspans_len - 1].attrs != char_attrs[attr_col]
+                if (bline->sspans[sspans_len - 1].length != col - attr_col
+                    || bline->sspans[sspans_len - 1].attrs != char_attrs[attr_col]
                 ) {
-                    bline->sspans[bline->sspans_len - 1].length = col - attr_col;
-                    bline->sspans[bline->sspans_len - 1].attrs = char_attrs[attr_col];
+                    bline->sspans[sspans_len - 1].length = col - attr_col;
+                    bline->sspans[sspans_len - 1].attrs = char_attrs[attr_col];
                     line_style_changed = 1;
                 }
 
@@ -915,12 +938,25 @@ ATTO_DEBUG_PRINTF("line[%d].span[%d].length = %d\n", line, bline->sspans_len - 1
             }
         }
 
-        if (bail_on_matching_style && bline->sspans_len > 0 && !line_style_changed) {
+        if (sspans_len != bline->sspans_len) {
+            bline->sspans_len = sspans_len;
+            line_style_changed = 1;
+        }
+
+        if (line != dirty_line && bail_on_matching_style && bline->sspans_len > 0 && !line_style_changed) {
             // TODO fix this or use exact comparison instead of hash
             // This line is styled the same way as it was before.
             // We're done!
-            //break;
+            break;
         }
+
+char* bull;
+buffer_get_line(self, line, 0, NULL, 0, &bull, NULL);
+ATTO_DEBUG_PRINTF("line=%d str=[%s] blinep=%p spansp=%p sspans[\n", line, bull, bline, bline->sspans);
+for (col = 0; col < sspans_len; col++) ATTO_DEBUG_PRINTF("    len=%d attrs=%d\n", bline->sspans[col].length, bline->sspans[col].attrs);
+ATTO_DEBUG_PRINTF("%s\n", "]");
+free(bull);
+
     }
 
     // Free char_attrs
