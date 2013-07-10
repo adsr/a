@@ -374,10 +374,10 @@ int buffer_search_reverse(buffer_t* self, char* needle, int offset) {
 }
 
 /**
- * Return the offset of the first occurence of regex after offset
+ * Wrapper for pcre_exec
  * Return -1 if not found or if regex is invalid
  */
-int buffer_regex(buffer_t* self, char* regex, int offset, int length) {
+int buffer_regex_exec(buffer_t* self, char* regex, int start_offset, int length, int offset, int options, int* ret_len) {
     pcre* re;
     int rc;
     int results[3];
@@ -385,18 +385,34 @@ int buffer_regex(buffer_t* self, char* regex, int offset, int length) {
     if (!re) {
         return -1;
     }
-    offset = ATTO_MIN(ATTO_MAX(offset, 0), self->byte_count - 1);
+    start_offset = ATTO_MIN(ATTO_MAX(start_offset, 0), self->byte_count - 1);
     if (length < 0) {
         length = self->byte_count - offset;
     } else {
-        length = ATTO_MIN(ATTO_MAX(length, 0), self->byte_count - offset);
+        length = ATTO_MIN(ATTO_MAX(length, 0), self->byte_count - start_offset);
     }
-    rc = pcre_exec(re, NULL, self->data + offset, length, 0, 0, results, 3);
+    rc = pcre_exec(re, NULL, self->data + start_offset, length, offset, options, results, 3);
     pcre_free(re);
     if (rc < 0) {
         return -1;
     }
-    return offset + results[0];
+    if (ret_len) {
+        *ret_len = results[1] - results[0];
+    }
+    return results[0];
+}
+
+/**
+ * Return the offset of the first occurence of regex after offset
+ * Return -1 if not found or if regex is invalid
+ */
+int buffer_regex(buffer_t* self, char* regex, int offset, int length) {
+    int rc;
+    rc = buffer_regex_exec(self, regex, offset, length, 0, 0, NULL);
+    if (rc < 0) {
+        return rc;
+    }
+    return offset + rc;
 }
 
 /**

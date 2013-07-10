@@ -91,6 +91,7 @@ int buffer_get_offset(buffer_t* self, int line, int col);
 int buffer_search(buffer_t* self, char* needle, int offset);
 int buffer_search_reverse(buffer_t* self, char* needle, int offset);
 int buffer_regex(buffer_t* self, char* regex, int offset, int length);
+int buffer_regex_exec(buffer_t* self, char* regex, int start_offset, int length, int offset, int options, int* ret_len);
 int _buffer_search(buffer_t* self, char* needle, int offset, int is_reverse);
 int buffer_add_style(buffer_t* self, srule_t* style);
 int buffer_remove_style(buffer_t* self, srule_t* style);
@@ -340,6 +341,7 @@ extern struct timespec tdebug;
             clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tdebug); \
             fprintf(fdebug, "%ld [%s] ", tdebug.tv_nsec, __PRETTY_FUNCTION__); \
             fprintf(fdebug, fmt, __VA_ARGS__); \
+            fflush(fdebug); \
         } \
     } while (0)
 

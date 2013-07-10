@@ -269,6 +269,12 @@ int _main_invoke_function(int luafn, bview_t* bview, lua_State* L, int width, in
     lua_pushinteger(L, bview->cursor->offset);
     lua_setfield(L, -2, "offset");
 
+    lua_pushinteger(L, bview->buffer->blines[bview->cursor->line].length);
+    lua_setfield(L, -2, "line_len");
+
+    lua_pushinteger(L, bview->buffer->blines[bview->cursor->line].offset);
+    lua_setfield(L, -2, "line_offset");
+
     lua_pushinteger(L, width);
     lua_setfield(L, -2, "width");
 

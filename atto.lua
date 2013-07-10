@@ -1,4 +1,27 @@
 local keymap_default = keymap_new(0)
+
+local function delete_word_back(context)
+    local match = -1
+    local last_match = -1
+    local offset = 0
+    repeat
+        last_match = match
+        match = buffer_regex_exec(context.buffer, [[\s\S]], context.line_offset, context.line_len, offset, 0)
+        if last_match == -1 and match == -1 then
+            last_match = 0
+            break
+        end
+        offset = match + 2
+    until match == -1 or match >= context.col
+    if last_match ~= -1 then
+        if last_match ~= 0 then
+            last_match = last_match + 1
+        end
+        buffer_delete(context.buffer, context.line_offset + last_match, context.col - last_match)
+    end
+end
+keymap_bind(keymap_default, "CW", delete_word_back)
+
 keymap_bind(keymap_default, "left", function(context) mark_move(context.cursor, -1) end)
 keymap_bind(keymap_default, "right", function(context) mark_move(context.cursor, 1) end)
 keymap_bind(keymap_default, "up", function(context) mark_move_line(context.cursor, -1) end)
