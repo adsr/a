@@ -839,7 +839,7 @@ ATTO_DEBUG_PRINTF("This rule touched: %s [%d:%d] with %d\n", rule->regex, matche
                     // Match! Are we before style_from_col?
                     if (matches[0] < style_from_col) {
                         // This part of the line is already styled; continue on
-                        re_offset = matches[0]; // Advance regex cursor
+                        re_offset = matches[0] + 1; // Advance regex cursor
                         continue;
                     }
                     // Now find cregex_end
