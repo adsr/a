@@ -1,3 +1,5 @@
+*Note: mace is abandonware.*
+
 mace
 ====
 
