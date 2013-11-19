@@ -1,3 +1,5 @@
+*Note: macephp is abandonware.*
+
 macephp
 =======
 
