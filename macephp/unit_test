@@ -1,0 +1,2 @@
+params=${@-tests/}
+phpunit --colors --bootstrap mace $params
